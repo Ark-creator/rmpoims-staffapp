@@ -6,6 +6,7 @@ import {
   Alert,
   StyleSheet,
   Image,
+  ScrollView, // 👈 1. Pinalitan ang KeyboardAvoidingView ng ScrollView
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../utils/api";
@@ -17,6 +18,7 @@ export default function Login({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    // ... walang pagbabago sa function na ito
     if (!email || !password) {
       Alert.alert("Error", "Please enter both email and password.");
       return;
@@ -51,7 +53,11 @@ export default function Login({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    // 2. Gumamit ng ScrollView bilang pangunahing container
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.form}>
         <Image source={require("../assets/images/Logo.png")} style={styles.logo} />
         
@@ -88,14 +94,16 @@ export default function Login({ navigation }) {
           disabled={loading}
         />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  // 3. Inayos ang container style para sa ScrollView
   container: {
-    flex: 1,
+    flexGrow: 1, 
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#F5F5F5",
   },
   form: {
@@ -103,7 +111,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     width: "80%",
     alignItems: "center",
-    marginTop: "20%",
   },
   logo: {
     width: 200,
