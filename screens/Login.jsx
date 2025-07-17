@@ -6,7 +6,7 @@ import {
   Alert,
   StyleSheet,
   Image,
-  ScrollView, // 👈 1. Pinalitan ang KeyboardAvoidingView ng ScrollView
+  ScrollView,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../utils/api";
@@ -18,9 +18,8 @@ export default function Login({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    // ... walang pagbabago sa function na ito
     if (!email || !password) {
-      Alert.alert("Error", "Please enter both email and password.");
+      Alert.alert("Missing Information", "Please enter both email and password.");
       return;
     }
 
@@ -29,41 +28,39 @@ export default function Login({ navigation }) {
     try {
       const response = await api.post("mobile/staff/login", { email, password });
 
-      console.log("📌 Login Response:", response.data);
-
+      // ✅ Simplified Logic: This endpoint always triggers 2FA.
       if (response.data.two_factor_user_id) {
-        await AsyncStorage.setItem("two_factor_user_id", response.data.two_factor_user_id.toString());
+        await AsyncStorage.setItem(
+          "two_factor_user_id",
+          response.data.two_factor_user_id.toString()
+        );
         navigation.navigate("TwoFactor");
-      } else if (response.data.token) {
-        await AsyncStorage.setItem("authToken", response.data.token);
-
-        if (response.data.user && response.data.user.id) {
-          await AsyncStorage.setItem("userId", response.data.user.id.toString());
-          console.log("✅ Stored User ID:", response.data.user.id);
-        }
-
-        navigation.replace("MainScreen");
+      } else {
+        // This case should ideally not happen if the API is consistent.
+        throw new Error("Received an unexpected response from the server.");
       }
     } catch (error) {
       console.error("❌ Login Error:", error.response?.data || error.message);
-      Alert.alert("Login Failed", error.response?.data?.message || "Invalid credentials.");
+      Alert.alert(
+        "Login Failed",
+        error.response?.data?.message || "An unexpected error occurred."
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    // 2. Gumamit ng ScrollView bilang pangunahing container
     <ScrollView
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.form}>
-        <Image source={require("../assets/images/Logo.png")} style={styles.logo} />
-        
-        <Text style={styles.title}>
-          Staff Login
-        </Text>
+        <Image
+          source={require("../assets/images/Logo.png")}
+          style={styles.logo}
+        />
+        <Text style={styles.title}>Staff Login</Text>
         <Text style={styles.subtitle}>
           “Staff Access – Monitor Routes, Fulfill Orders, Stay Synced.”
         </Text>
@@ -75,6 +72,7 @@ export default function Login({ navigation }) {
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
+          autoCapitalize="none"
         />
 
         <TextInput
@@ -99,22 +97,23 @@ export default function Login({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // 3. Inayos ang container style para sa ScrollView
   container: {
-    flexGrow: 1, 
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#F5F5F5",
   },
   form: {
-    padding: 5,
+    padding: 20,
     borderRadius: 10,
-    width: "80%",
+    width: "85%",
     alignItems: "center",
+    backgroundColor: 'white',
+    elevation: 3,
   },
   logo: {
-    width: 200,
-    height: 210,
+    width: 150,
+    height: 160,
     marginBottom: 20,
   },
   title: {
@@ -134,9 +133,11 @@ const styles = StyleSheet.create({
   input: {
     width: "100%",
     height: 50,
-    backgroundColor: "#fff",
-    marginBottom: 10,
-    paddingHorizontal: 10,
-    borderRadius: 5,
+    backgroundColor: "#f0f0f0",
+    marginBottom: 15,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd'
   },
 });
