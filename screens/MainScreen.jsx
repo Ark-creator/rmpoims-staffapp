@@ -1,71 +1,88 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Alert } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import api from "../utils/api";
-import CustomButton from "../components/CustomButton";
+import React from 'react';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-export default function MainScreen({ navigation }) {
-  const [user, setUser] = useState(null);
+import DashboardScreen from './DashboardScreen';
+import OrdersScreen from './OrdersScreen';
+import ChatScreen from './ChatScreen';
 
-  useEffect(() => {
-    const fetchStaff = async () => {
-      try {
-        const response = await api.get("mobile/staff/user");
-        setUser(response.data);
-      } catch (error) {
-        console.error("Failed to fetch staff user:", error);
-        Alert.alert("Error", "Could not fetch staff info.");
-      }
-    };
+const COLORS = {
+  primary: '#1976D2',
+  inactive: '#95A5A6',
+  white: '#FFFFFF',
+  background: '#F8F9FA',
+};
 
-    fetchStaff();
-  }, []);
+const Tab = createBottomTabNavigator();
 
-  const handleLogout = async () => {
-    try {
-      await api.post("mobile/staff/logout");
-      await AsyncStorage.removeItem("authToken");
-      await AsyncStorage.removeItem("userId");
-      navigation.replace("Login");
-    } catch (error) {
-      console.error("Logout error:", error);
-      Alert.alert("Logout Failed", "Try again.");
-    }
-  };
-
+export default function MainScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.welcome}>
-        Welcome{user ? `, ${user.staff_username}` : ""}!
-      </Text>
-      <Text style={styles.subtext}>You are logged in as staff.</Text>
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        // Header styling
+        headerStyle: {
+          backgroundColor: COLORS.primary,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        headerTintColor: COLORS.white,
+        headerTitleStyle: {
+          fontWeight: '600',
+          fontSize: 20,
+        },
+        headerTitleAlign: 'center',
+        
+        // Tab bar styling
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.inactive,
+        tabBarStyle: {
+          backgroundColor: COLORS.white,
+          borderTopWidth: 0,
+          elevation: 8,
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          height: 60,
+          paddingBottom: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          marginBottom: 4,
+        },
 
-      <CustomButton
-        title="Logout"
-        onPress={handleLogout}
-        backgroundColor="#dc3545"
-        style={{ marginTop: 20, borderRadius: 5, padding: 10 }}
+        // Icon logic
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+
+          if (route.name === 'Dashboard') {
+            iconName = focused ? 'view-dashboard' : 'view-dashboard-outline';
+          } else if (route.name === 'Orders') {
+            iconName = focused ? 'clipboard-list' : 'clipboard-list-outline';
+          } else if (route.name === 'Chat') {
+            iconName = focused ? 'message-text' : 'message-text-outline';
+          }
+          
+          return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen 
+        name="Dashboard" 
+        component={DashboardScreen} 
+        options={{ title: 'Overview' }}
       />
-    </View>
+      <Tab.Screen 
+        name="Orders" 
+        component={OrdersScreen} 
+        options={{ title: 'Orders' }}
+      />
+      <Tab.Screen 
+        name="Chat" 
+        component={ChatScreen} 
+        options={{ 
+          title: 'Messages',
+          tabBarBadge: 0, // You can dynamically set this value
+        }}
+      />
+    </Tab.Navigator>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F5F5F5",
-    padding: 20,
-  },
-  welcome: {
-    fontSize: 28,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 10,
-  },
-  subtext: {
-    fontSize: 16,
-    color: "#777",
-  },
-});
