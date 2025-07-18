@@ -9,129 +9,98 @@ import {
   ScrollView,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Updated data with more descriptive icons
+// --- DATA WITH ICONS MATCHING YOUR TARGET IMAGE ---
 const cardData = [
-  { value: '704', label: 'Total Delivered', icon: 'truck-delivery', iconColor: '#4CAF50' },
-  { value: '6', label: 'Pending Orders', icon: 'timer-sand', iconColor: '#FF9800' },
-  { value: '9', label: 'Cancelled Orders', icon: 'cancel', iconColor: '#F44336' },
-  { value: '0', label: 'Unread Messages', icon: 'message-badge', iconColor: '#2196F3' },
+  { value: '704', label: 'Total Delivered', icon: 'truck-delivery-outline', color: '#3498DB' },
+  { value: '6', label: 'Pending Orders', icon: 'package-variant-closed', color: '#F39C12' },
+  { value: '9', label: 'Cancelled', icon: 'cancel', color: '#E74C3C' },
+  { value: '0', label: 'Messages', icon: 'chat-processing-outline', color: '#1ABC9C' },
 ];
 
-// Dynamic sizing calculation
 const screenWidth = Dimensions.get('window').width;
-const numColumns = 2;
-const containerPadding = 16;
+const cardPadding = 16;
 const cardGap = 16;
-const availableWidth = screenWidth - (containerPadding * 2) - (cardGap * (numColumns - 1));
-const cardWidth = availableWidth / numColumns;
+const cardWidth = (screenWidth - (cardPadding * 2) - cardGap) / 2;
 
-// Reusable Card Component with better touch feedback
+// --- RE-STYLED CARD COMPONENT TO MATCH TARGET ---
 const InfoCard = ({ item }) => (
-  <TouchableOpacity 
-    style={styles.card}
-    activeOpacity={0.7}
-  >
-    <View style={styles.cardIconContainer}>
-      <MaterialCommunityIcons 
-        name={item.icon} 
-        size={28} 
-        color={item.iconColor} 
-        style={styles.cardIcon}
-      />
-    </View>
+  <TouchableOpacity style={styles.card} activeOpacity={0.8}>
     <View style={styles.cardContent}>
       <Text style={styles.cardNumber}>{item.value}</Text>
-      <Text style={styles.cardLabel} numberOfLines={1}>{item.label}</Text>
+      <Text style={styles.cardLabel}>{item.label}</Text>
     </View>
+    <MaterialCommunityIcons name={item.icon} size={32} color={item.color} />
   </TouchableOpacity>
 );
 
-// Main Screen Component with header
 export default function DashboardScreen() {
-  const insets = useSafeAreaInsets();
-  
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Dashboard</Text>
-      </View>
-      
-      <ScrollView 
+    <SafeAreaView style={styles.container}>
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
       >
+        {/* --- SECTION TITLE (INSTEAD OF OLD HEADER) --- */}
+        <Text style={styles.sectionTitle}>Dashboard</Text>
         <View style={styles.gridContainer}>
           {cardData.map((item, index) => (
             <InfoCard key={index} item={item} />
           ))}
         </View>
         
-        {/* Additional content area */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
-          <View style={styles.activityCard}>
-            <MaterialCommunityIcons name="history" size={24} color="#666" />
-            <Text style={styles.activityText}>No recent activity</Text>
-          </View>
+        <Text style={styles.sectionTitle}>Recent Activity</Text>
+        <View style={styles.activityCard}>
+          <MaterialCommunityIcons name="history" size={24} color="#7F8C8D" />
+          <Text style={styles.activityText}>No recent activity</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// Updated Styles with better visual hierarchy
+// --- NEW AND IMPROVED STYLES ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
-  },
-  header: {
-    padding: 16,
-    backgroundColor: '#1976D2',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    backgroundColor: '#F4F6F8',
   },
   scrollContainer: {
-    paddingBottom: 20,
+    padding: cardPadding,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    paddingHorizontal: containerPadding,
-    paddingTop: 20,
   },
   card: {
     width: cardWidth,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     marginBottom: cardGap,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#EAECEE',
+    shadowColor: '#B0BEC5',
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  cardIconContainer: {
-    backgroundColor: 'rgba(25, 118, 210, 0.1)',
-    borderRadius: 8,
-    padding: 8,
-    marginRight: 12,
-  },
-  cardContent: {
-    flex: 1,
-  },
+  cardContent: {},
   cardNumber: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: 'bold',
     color: '#2C3E50',
   },
   cardLabel: {
@@ -139,31 +108,18 @@ const styles = StyleSheet.create({
     color: '#7F8C8D',
     marginTop: 4,
   },
-  section: {
-    paddingHorizontal: 16,
-    marginTop: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2C3E50',
-    marginBottom: 12,
-  },
   activityCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#EAECEE',
   },
   activityText: {
     marginLeft: 12,
-    color: '#666',
+    color: '#7F8C8D',
     fontSize: 16,
   },
 });

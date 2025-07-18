@@ -6,20 +6,24 @@ import DashboardScreen from './DashboardScreen';
 import OrdersScreen from './OrdersScreen';
 import ChatScreen from './ChatScreen';
 
+// --- REFINED COLOR PALETTE ---
 const COLORS = {
-  primary: '#1976D2',
-  inactive: '#95A5A6',
+  primary: '#1A73E8', // A slightly more modern blue
   white: '#FFFFFF',
-  background: '#F8F9FA',
+  inactive: '#8E8E93', // Standard inactive gray
+  background: '#F4F6F8', // Light background for contrast
+  danger: '#D32F2F',
 };
 
 const Tab = createBottomTabNavigator();
 
 export default function MainScreen() {
+  // Example: You can get this from your state or API
+  const unreadMessages = 0; 
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        // Header styling
         headerStyle: {
           backgroundColor: COLORS.primary,
           elevation: 0,
@@ -27,41 +31,39 @@ export default function MainScreen() {
         },
         headerTintColor: COLORS.white,
         headerTitleStyle: {
-          fontWeight: '600',
+          fontWeight: 'bold',
           fontSize: 20,
         },
         headerTitleAlign: 'center',
         
-        // Tab bar styling
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.inactive,
         tabBarStyle: {
           backgroundColor: COLORS.white,
           borderTopWidth: 0,
-          elevation: 8,
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
-          height: 60,
-          paddingBottom: 8,
+          height: 65,
+          paddingTop: 5,
+          paddingBottom: 10,
         },
         tabBarLabelStyle: {
           fontSize: 12,
-          marginBottom: 4,
+          fontWeight: '500',
         },
 
-        // Icon logic
+        // --- UPDATED ICONS ---
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
+          const iconSize = focused ? 28 : 26; // Make active icon slightly larger
 
           if (route.name === 'Dashboard') {
-            iconName = focused ? 'view-dashboard' : 'view-dashboard-outline';
+            iconName = focused ? 'view-grid' : 'view-grid-outline';
           } else if (route.name === 'Orders') {
-            iconName = focused ? 'clipboard-list' : 'clipboard-list-outline';
+            iconName = focused ? 'clipboard-text' : 'clipboard-text-outline';
           } else if (route.name === 'Chat') {
-            iconName = focused ? 'message-text' : 'message-text-outline';
+            iconName = focused ? 'chat-processing' : 'chat-processing-outline';
           }
           
-          return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+          return <MaterialCommunityIcons name={iconName} size={iconSize} color={color} />;
         },
       })}
     >
@@ -73,14 +75,18 @@ export default function MainScreen() {
       <Tab.Screen 
         name="Orders" 
         component={OrdersScreen} 
-        options={{ title: 'Orders' }}
       />
       <Tab.Screen 
         name="Chat" 
         component={ChatScreen} 
         options={{ 
           title: 'Messages',
-          tabBarBadge: 0, // You can dynamically set this value
+          // --- HIDE BADGE IF ZERO ---
+          tabBarBadge: unreadMessages > 0 ? unreadMessages : null,
+          tabBarBadgeStyle: {
+            backgroundColor: COLORS.danger,
+            color: COLORS.white,
+          }
         }}
       />
     </Tab.Navigator>
