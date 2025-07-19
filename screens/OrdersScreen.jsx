@@ -8,10 +8,11 @@ import {
     TouchableOpacity,
     TextInput,
     ActivityIndicator,
+    Alert, // 1. Import Alert
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import api from '../utils/api'; // Your central API instance
+import api from '../utils/api';
 
 // --- UI Sub-Components ---
 const SummaryCard = ({ title, count, icon, isAlert }) => (
@@ -24,17 +25,36 @@ const SummaryCard = ({ title, count, icon, isAlert }) => (
     </View>
 );
 
+// --- MODIFIED OrderItemCard Component ---
 const OrderItemCard = ({ orderGroup, employeeInfo }) => {
     const [name, date] = employeeInfo.split('|');
     const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     
+    // 2. Function na tatawagin kapag pinindot ang button
+    const handleViewPress = () => {
+        // I-format ang mga detalye ng order para madaling basahin sa alert
+        const orderDetails = orderGroup.map(order => {
+            const product = order.exclusive_deal?.product;
+            if (!product) return 'Unknown Product';
+            return `- ${order.quantity} x ${product.generic_name} (${product.brand_name})`;
+        }).join('\n');
+
+        // 3. Ipakita ang Alert na may order details
+        Alert.alert(
+            `Orders for ${name}`, // Title ng Alert
+            orderDetails, // Message/Content ng Alert
+            [{ text: 'OK' }] // Button para isara ang alert
+        );
+    };
+
     return (
         <View style={styles.orderItem}>
             <View>
                 <Text style={styles.orderEmployee}>{name}</Text>
                 <Text style={styles.orderDate}>{formattedDate}</Text>
             </View>
-            <TouchableOpacity style={styles.viewButton}>
+            {/* 4. Idagdag ang onPress prop sa TouchableOpacity */}
+            <TouchableOpacity style={styles.viewButton} onPress={handleViewPress}>
                 <Text style={styles.viewButtonText}>View ({orderGroup.length})</Text>
             </TouchableOpacity>
         </View>
@@ -42,19 +62,15 @@ const OrderItemCard = ({ orderGroup, employeeInfo }) => {
 };
 
 
-// --- Main Orders Screen Component ---
+// --- Main Orders Screen Component (No other changes needed here) ---
 export default function OrdersScreen() {
-    // State for data, loading indicators, and filters
     const [summary, setSummary] = useState(null);
     const [ordersByProvince, setOrdersByProvince] = useState({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    
-    // Filters apply to the entire list
     const [selectedCompany, setSelectedCompany] = useState('All');
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Fetch data from the API when the component mounts
     useEffect(() => {
         const fetchOrders = async () => {
             try {
@@ -72,12 +88,8 @@ export default function OrdersScreen() {
         fetchOrders();
     }, []);
 
-    // --- Prepare derived data for rendering ---
-    
-    // Get a unique list of all company names from all provinces for the filter dropdown
     const allCompanyNames = ['All', ...new Set(Object.values(ordersByProvince).flatMap(companies => Object.keys(companies)))];
     
-    // Data for the summary cards at the top
     const summaryData = summary ? [
         { title: 'Total Orders This Week', count: summary.ordersThisWeek, icon: 'chart-line' },
         { title: 'Pending Orders', count: summary.pendingOrders, icon: 'clock-outline' },
@@ -97,12 +109,10 @@ export default function OrdersScreen() {
                     <Text style={styles.errorText}>{error}</Text>
                 ) : (
                     <>
-                        {/* Summary Cards Section */}
                         <View style={styles.summaryGrid}>
                             {summaryData.map((item, index) => <SummaryCard key={index} {...item} />)}
                         </View>
 
-                        {/* --- Main Filters for the entire list --- */}
                         <View style={styles.listContainer}>
                              <View style={styles.controlsContainer}>
                                 <View style={styles.searchContainer}>
@@ -120,18 +130,14 @@ export default function OrdersScreen() {
                             </View>
                         </View>
 
-                        {/* --- Loop through each province and display its orders --- */}
                         {Object.entries(ordersByProvince).map(([provinceName, companies]) => (
                             <View key={provinceName} style={styles.provinceSection}>
                                 <Text style={styles.provinceTitle}>Orders In: {provinceName}</Text>
                                 
                                 {Object.entries(companies).map(([companyName, employeeGroups]) => {
-                                    // Apply company and search filters to the orders
                                     const filteredEmployeeGroups = Object.entries(employeeGroups)
                                         .filter(([employeeInfo]) => employeeInfo.toLowerCase().includes(searchQuery.toLowerCase()));
 
-                                    // Hide the entire company section if it doesn't match the company filter
-                                    // or if no employees within it match the search query.
                                     if ((selectedCompany !== 'All' && selectedCompany !== companyName) || filteredEmployeeGroups.length === 0) {
                                         return null;
                                     }
@@ -155,7 +161,7 @@ export default function OrdersScreen() {
 }
 
 
-// --- StyleSheet ---
+// --- StyleSheet (Walang pagbabago dito) ---
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F4F6F8' },
     scrollContainer: { paddingHorizontal: 16, paddingVertical: 16, minHeight: '100%' },
@@ -166,33 +172,10 @@ const styles = StyleSheet.create({
     summaryCount: { fontSize: 24, fontWeight: 'bold', color: '#333' },
     summaryTitle: { fontSize: 14, color: '#666', marginTop: 4, flexShrink: 1 },
     alertText: { color: '#FFF' },
-
-    // Style for the main white card holding filters
     listContainer: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, marginBottom: 16, },
     controlsContainer: { marginBottom: 0 },
-    
-    // Container for each province block
-    provinceSection: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        padding: 16,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 5,
-        marginTop: 16,
-    },
-    // Style for the "Orders In: [Province Name]" title
-    provinceTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#1A202C',
-        marginBottom: 16,
-        paddingBottom: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#E2E8F0',
-    },
-
+    provinceSection: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, marginTop: 16, },
+    provinceTitle: { fontSize: 22, fontWeight: 'bold', color: '#1A202C', marginBottom: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', },
     searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F4F6F8', borderRadius: 8, paddingHorizontal: 12, marginBottom: 16, },
     searchInput: { flex: 1, paddingVertical: 12, fontSize: 16, marginLeft: 8 },
     actionButtons: { flexDirection: 'row', justifyContent: 'flex-start', gap: 12, marginBottom: 16 },
@@ -200,7 +183,6 @@ const styles = StyleSheet.create({
     buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
     pickerContainer: { backgroundColor: '#F4F6F8', borderRadius: 8, borderWidth: 1, borderColor: '#E0E0E0', marginBottom: 16 },
     picker: { width: '100%' },
-
     companySection: { marginTop: 8 },
     companyTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E0E0E0', paddingBottom: 8, },
     orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', },
