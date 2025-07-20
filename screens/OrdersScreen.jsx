@@ -75,7 +75,7 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
                     <Text style={modalStyles.tableCell}>Actions</Text>
                 ) : isInsufficient ? (
                     <View style={{ flex: 1.5, alignItems: 'center' }}>
-                        <Text style={modalStyles.insufficientStockText}>Insufficient Stock</Text>
+                        <Text style={modalStyles.insufficientStockText}>Cannot Fulfill</Text>
                     </View>
                 ) : (
                     <TouchableOpacity
@@ -148,8 +148,6 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
         </Modal>
     );
 };
-
-
 
 // =================================================================
 // CHANGE STATUS MODAL COMPONENT
@@ -323,7 +321,7 @@ export default function OrdersScreen() {
                                 {Object.entries(companies).filter(([co]) => filters.company === 'All' || filters.company === co).map(([co, employees]) => {
                                     const filteredEmployees = Object.entries(employees).filter(([emp]) => emp.toLowerCase().includes(filters.search.toLowerCase()));
                                     if (filteredEmployees.length === 0) return null;
-                                    return ( <View key={co} style={styles.companySection}><Text style={styles.companyTitle}>{co}</Text>{filteredEmployees.map(([emp, orders]) => <OrderItemCard key={emp} employeeInfo={emp} onView={() => handleOpenViewModal({employeeInfo: emp, orderGroup: orders})} />)}</View> );
+                                    return ( <View key={co} style={styles.companySection}><Text style={styles.companyTitle}>{co}</Text>{filteredEmployees.map(([emp, orders]) => <OrderItemCard key={emp} employeeInfo={emp} orderGroup={orders} onView={() => handleOpenViewModal({employeeInfo: emp, orderGroup: orders})} />)}</View> );
                                 })}
                             </View>
                         ))}
@@ -336,14 +334,41 @@ export default function OrdersScreen() {
 
 // Sub-Components
 const SummaryCard = ({ title, count, icon, isAlert }) => (<View style={[styles.summaryCard, isAlert && styles.alertCard]}><View><Text style={[styles.summaryCount, isAlert && styles.alertText]}>{count}</Text><Text style={[styles.summaryTitle, isAlert && styles.alertText]}>{title}</Text></View><MaterialCommunityIcons name={icon} size={30} color={isAlert ? '#FFF' : '#1A73E8'} /></View>);
-const OrderItemCard = ({ employeeInfo, onView }) => { 
-    const [name, date] = employeeInfo.split('|'); 
+
+const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
+    const [name, date] = employeeInfo.split('|');
+
+    // Count insufficient stock orders
+    const insufficientCount = Object.values(orderGroup || {}).reduce((count, order) => {
+        if (!order || typeof order !== 'object') return count;
+        const available = order.available_stock;
+        const needed = order.quantity;
+        if (available === 'expired' || (typeof available === 'number' && available < needed)) {
+            return count + 1;
+        }
+        return count;
+    }, 0);
+
     return (
-        <View style={styles.orderItem}><View><Text style={styles.orderEmployee}>{name}</Text><Text style={styles.orderDate}>{new Date(date).toLocaleDateString()}</Text></View>
-            <TouchableOpacity style={styles.viewButton} onPress={onView}><Text style={styles.viewButtonText}>View Orders</Text></TouchableOpacity>
+        <View style={styles.orderItem}>
+            <View>
+                <Text style={styles.orderEmployee}>{name}</Text>
+                <Text style={styles.orderDate}>{new Date(date).toLocaleDateString()}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {insufficientCount > 0 && (
+                    <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{insufficientCount}</Text>
+                    </View>
+                )}
+                <TouchableOpacity style={styles.viewButton} onPress={onView}>
+                    <Text style={styles.viewButtonText}>View Orders</Text>
+                </TouchableOpacity>
+            </View>
         </View>
     );
 };
+
 
 // Stylesheets
 const styles = StyleSheet.create({
@@ -360,6 +385,8 @@ const styles = StyleSheet.create({
     provinceTitle: { fontSize: 22, fontWeight: 'bold', color: '#1A202C', marginBottom: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
     companySection: { marginTop: 8 }, companyTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 8 },
     orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+    badge: { backgroundColor: '#E53935', borderRadius: 12, minWidth: 24, height: 24, justifyContent: 'center', alignItems: 'center', marginRight: 8, paddingHorizontal: 6, },
+    badgeText: { color: 'white', fontSize: 12, fontWeight: 'bold', },
     orderEmployee: { fontSize: 16, fontWeight: '600' }, orderDate: { fontSize: 14, color: '#777' }, viewButton: { backgroundColor: '#E8F0FE', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20 }, viewButtonText: { color: '#1A73E8', fontWeight: 'bold' },
     scannerContainer: { flex: 1, backgroundColor: 'white' }, center: { justifyContent: 'center', alignItems: 'center' }, permissionText: { fontSize: 18, textAlign: 'center', padding: 20 },
     loadingText: { marginTop: 10, fontSize: 16 }, scanPrompt: { color: 'white', fontSize: 18, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 8 },
@@ -392,4 +419,4 @@ const modalStyles = StyleSheet.create({
     productNameTitle: { fontSize: 18, fontWeight: '500', textAlign: 'center', marginVertical: 15, color: '#333' },
     insufficientStockRow: { backgroundColor: '#FFF1F0' },
     insufficientStockText: { color: '#E53935', fontSize: 11, fontWeight: 'bold' },
-}); 
+});

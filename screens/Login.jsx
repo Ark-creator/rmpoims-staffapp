@@ -28,23 +28,31 @@ export default function Login({ navigation }) {
     try {
       const response = await api.post("mobile/staff/login", { email, password });
 
-      // ✅ Simplified Logic: This endpoint always triggers 2FA.
       if (response.data.two_factor_user_id) {
         await AsyncStorage.setItem(
           "two_factor_user_id",
           response.data.two_factor_user_id.toString()
         );
         navigation.navigate("TwoFactor");
-      } else {
-        // This case should ideally not happen if the API is consistent.
-        throw new Error("Received an unexpected response from the server.");
       }
     } catch (error) {
-      console.error("❌ Login Error:", error.response?.data || error.message);
-      Alert.alert(
-        "Login Failed",
-        error.response?.data?.message || "An unexpected error occurred."
-      );
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+
+        if (status === 401) {
+          Alert.alert("Login Failed", data.message || "Invalid email or password.");
+        } else if (status === 422) {
+          const firstError = Object.values(data.errors)[0][0];
+          Alert.alert("Invalid Input", firstError || "Please check the information you provided.");
+        } else {
+          Alert.alert("Error", "An unexpected server error occurred. Please try again later.");
+        }
+      } else if (error.request) {
+        Alert.alert("Network Error", "Cannot connect to the server. Please check your internet connection.");
+      } else {
+        Alert.alert("Error", "An unexpected error occurred. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -91,6 +99,15 @@ export default function Login({ navigation }) {
           style={{ marginTop: 10, borderRadius: 5, padding: 10 }}
           disabled={loading}
         />
+
+        {/* 👇 FOOTER SECTION ADDED HERE 👇 */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            Developed by the{' '}
+            <Text style={{ fontWeight: 'bold' }}>RMPOIMS</Text>
+            {' '}Research & Production Team.
+          </Text>
+        </View>
       </View>
     </ScrollView>
   );
@@ -139,5 +156,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#ddd'
+  },
+  // 👇 FOOTER STYLES ADDED HERE 👇
+  footer: {
+    marginTop: 30,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+    width: '100%',
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center',
   },
 });
