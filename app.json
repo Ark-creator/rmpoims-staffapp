@@ -28,8 +28,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "8ce57e1e-1552-454a-9bac-a73462708cfc"
+        "projectId": "d195afe9-2c0b-4448-852b-1c73951f16bc"
       }
-    }
+    },
+    "owner": "jmjonatas"
   }
 }
