@@ -1,11 +1,12 @@
-import React, { useEffect } from 'react';
-import { TouchableOpacity, Alert, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Alert, TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Location from "expo-location";
-import api from '../utils/api.js';
+import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
+import api from '../utils/api';
 
 import DashboardScreen from './DashboardScreen';
 import OrdersScreen from './OrdersScreen';
@@ -20,45 +21,75 @@ const COLORS = {
 };
 
 const Tab = createBottomTabNavigator();
+const LOCATION_TASK_NAME = 'background-location-task';
+
+// Define the background task
+TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
+  if (error) {
+    console.error('❌ TaskManager error:', error.message);
+    return;
+  }
+
+  if (data) {
+    const { locations } = data;
+    const location = locations[0];
+
+    if (location) {
+      try {
+        console.log('📡 Sending background location:', location.coords);
+        await api.post('mobile/staff/location-update', {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+      } catch (e) {
+        console.error('❌ Failed to send background location:', e.message);
+      }
+    }
+  }
+});
 
 export default function MainScreen() {
   const navigation = useNavigation();
   const unreadMessages = 0;
 
-  // This function gets the location once and sends it to the server.
-  const sendLocationOnce = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      console.warn("⚠️ Location permission not granted.");
-      Alert.alert('Permission Required', 'Location access is needed to update your status.');
-      return;
-    }
-
-    try {
-      console.log("Getting current location...");
-      const location = await Location.getCurrentPositionAsync({});
-      
-      await api.post("mobile/staff/location-update", {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
-      console.log("✅ One-time location sent successfully:", location.coords);
-
-    } catch (err) {
-      console.error("❌ Failed to send initial location:", err.message);
-      Alert.alert('Error', 'Could not send your location to the server.');
-    }
-  };
-
-  // This hook ensures the location is sent every time the user logs in
-  // because the screen is re-mounted on each login.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      sendLocationOnce();
-    }, 500);
+    const startBackgroundLocation = async () => {
+      const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
+      const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
 
-    return () => clearTimeout(timer);
+      if (fgStatus !== 'granted' || bgStatus !== 'granted') {
+        Alert.alert('Permission Required', 'Location access is needed to track in background.');
+        return;
+      }
+
+      const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      if (!hasStarted) {
+        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000, // every 10 seconds
+          distanceInterval: 10, // or every 10 meters
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: 'ARKQuest Location Tracking',
+            notificationBody: 'Tracking your location in background...',
+          },
+        });
+
+        console.log('📍 Background location tracking started');
+      }
+    };
+
+    startBackgroundLocation();
+
+    return () => {
+      // Optionally stop location tracking on unmount (e.g., logout)
+      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).then((started) => {
+        if (started) {
+          Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+          console.log("📍 Background location tracking stopped.");
+        }
+      });
+    };
   }, []);
 
   const handleLogout = () => {
@@ -72,6 +103,7 @@ export default function MainScreen() {
           style: "destructive",
           onPress: async () => {
             try {
+              await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
               await api.post('/mobile/staff/logout');
               await AsyncStorage.removeItem('authToken');
               navigation.reset({
@@ -117,13 +149,13 @@ export default function MainScreen() {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Overview' }} />
       <Tab.Screen name="Orders" component={OrdersScreen} />
-      <Tab.Screen 
-        name="Chat" 
-        component={ChatScreen} 
-        options={{ 
+      <Tab.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={{
           title: 'Messages',
           tabBarBadge: unreadMessages > 0 ? unreadMessages : null,
-          tabBarBadgeStyle: { backgroundColor: COLORS.danger, color: COLORS.white }
+          tabBarBadgeStyle: { backgroundColor: COLORS.danger, color: COLORS.white },
         }}
       />
     </Tab.Navigator>
