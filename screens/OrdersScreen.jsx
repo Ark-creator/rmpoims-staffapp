@@ -30,6 +30,7 @@ const COLORS = {
   primaryLight: '#E8F0FE',
   primaryDark: '#005382',
   secondary: '#8E44AD',
+  info: '#3498DB', // New color for 'Out for Delivery'
   danger: '#E53935',
   dangerLight: '#FFF1F0',
   warning: '#F39C12',
@@ -45,7 +46,7 @@ const COLORS = {
 };
 
 // =================================================================
-// VIEW DETAILS MODAL COMPONENT
+// VIEW DETAILS MODAL COMPONENT (No Changes)
 // =================================================================
 const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }) => {
     if (!orderData) return null;
@@ -53,13 +54,10 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
     const { employeeInfo, orderGroup } = orderData;
     const [name, date] = employeeInfo.split('|');
 
-    // Ensure array format
-    const orderArray = Object.values(orderGroup || {});
+    // Filter orders to show only those not delivered or cancelled
+    const activeOrders = Object.values(orderGroup || {}).filter(o => o && o.status !== 'delivered' && o.status !== 'cancelled');
 
-    const pendingOrders = orderArray.filter(o => o && o.status === 'pending');
-    const completedOrders = orderArray.filter(o => o && o.status === 'completed');
-
-    const grandTotal = orderArray.reduce((sum, order) => {
+    const grandTotal = activeOrders.reduce((sum, order) => {
         if (!order || !order.quantity || !order.exclusive_deal?.price) return sum;
         return sum + (order.quantity * (order.exclusive_deal?.price || 0));
     }, 0);
@@ -147,53 +145,18 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
                     </View>
 
                     <ScrollView style={modalStyles.contentScrollView}>
-                        {pendingOrders.length > 0 && (
-                            <>
-                                <View style={modalStyles.sectionHeader}>
-                                    <Text style={modalStyles.sectionTitle}>PENDING ORDERS</Text>
-                                    <View style={modalStyles.sectionIndicator}>
-                                        <Text style={modalStyles.sectionIndicatorText}>
-                                            {pendingOrders.length} items
-                                        </Text>
-                                    </View>
-                                </View>
-                                <View style={modalStyles.table}>
-                                    <OrderRow isHeader />
-                                    {pendingOrders.map(order => (
-                                        <OrderRow
-                                            key={order.id}
-                                            order={order}
-                                            onUpdateStatusRequest={onUpdateStatusRequest}
-                                        />
-                                    ))}
-                                </View>
-                            </>
-                        )}
-
-                        {completedOrders.length > 0 && (
-                            <>
-                                <View style={modalStyles.sectionHeader}>
-                                    <Text style={modalStyles.sectionTitle}>COMPLETED ORDERS</Text>
-                                    <View style={modalStyles.sectionIndicator}>
-                                        <Text style={modalStyles.sectionIndicatorText}>
-                                            {completedOrders.length} items
-                                        </Text>
-                                    </View>
-                                </View>
-                                <View style={modalStyles.table}>
-                                    <OrderRow isHeader />
-                                    {completedOrders.map(order => (
-                                        <OrderRow
-                                            key={order.id}
-                                            order={order}
-                                            onUpdateStatusRequest={onUpdateStatusRequest}
-                                        />
-                                    ))}
-                                </View>
-                            </>
-                        )}
-
-                        {pendingOrders.length === 0 && completedOrders.length === 0 && (
+                        {activeOrders.length > 0 ? (
+                            <View style={modalStyles.table}>
+                                <OrderRow isHeader />
+                                {activeOrders.map(order => (
+                                    <OrderRow
+                                        key={order.id}
+                                        order={order}
+                                        onUpdateStatusRequest={onUpdateStatusRequest}
+                                    />
+                                ))}
+                            </View>
+                        ) : (
                             <View style={styles.emptyState}>
                                 <MaterialCommunityIcons 
                                     name="package-variant" 
@@ -201,7 +164,7 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
                                     color={COLORS.textLighter} 
                                 />
                                 <Text style={styles.emptyStateText}>
-                                    No pending or completed orders
+                                    No active orders for this entry.
                                 </Text>
                             </View>
                         )}
@@ -220,254 +183,346 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
 };
 
 // =================================================================
-// CHANGE STATUS MODAL COMPONENT
+// CHANGE STATUS MODAL COMPONENT (Modified)
 // =================================================================
 const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
+  return (
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+        <View style={modalStyles.overlay}>
+            <View style={[modalStyles.modalContainer, { width: width * 0.85 }]}>
+                <View style={modalStyles.header}>
+                    <Text style={modalStyles.headerTitle}>Update Order Status</Text>
+                    <TouchableOpacity onPress={onClose}>
+                        <MaterialCommunityIcons 
+                            name="close-circle" 
+                            size={30} 
+                            color={COLORS.textLight} 
+                        />
+                    </TouchableOpacity>
+                </View>
+                
+                <View style={modalStyles.productInfoContainer}>
+                    <Text style={modalStyles.productNameTitle}>{productName}</Text>
+                </View>
+
+                <View style={modalStyles.statusButtonContainer}>
+                    {/* Pending Button */}
+                    <TouchableOpacity 
+                        style={[modalStyles.statusButton, {backgroundColor: COLORS.warning}]} 
+                        onPress={() => onSubmit('pending')}
+                    >
+                        <MaterialCommunityIcons name="clock-outline" size={20} color={COLORS.white} />
+                        <Text style={modalStyles.statusButtonText}>PENDING</Text>
+                    </TouchableOpacity>
+                    
+                    {/* Out for Delivery Button (NEW) */}
+                    <TouchableOpacity 
+                        style={[modalStyles.statusButton, {backgroundColor: COLORS.info}]} 
+                        onPress={() => onSubmit('out for delivery')}
+                    >
+                        <MaterialCommunityIcons name="truck-fast-outline" size={20} color={COLORS.white} />
+                        <Text style={modalStyles.statusButtonText}>OUT FOR DELIVERY</Text>
+                    </TouchableOpacity>
+                    
+                    {/* Delivered Button */}
+                    <TouchableOpacity 
+                        style={[modalStyles.statusButton, {backgroundColor: COLORS.primary}]} 
+                        onPress={() => onSubmit('delivered')}
+                    >
+                        <MaterialCommunityIcons name="package-variant-closed-check" size={20} color={COLORS.white} />
+                        <Text style={modalStyles.statusButtonText}>DELIVERED</Text>
+                    </TouchableOpacity>
+                    
+                    {/* Cancelled Button */}
+                    <TouchableOpacity 
+                        style={[modalStyles.statusButton, {backgroundColor: COLORS.danger}]} 
+                        onPress={() => onSubmit('cancelled')}
+                    >
+                        <MaterialCommunityIcons name="close-circle-outline" size={20} color={COLORS.white} />
+                        <Text style={modalStyles.statusButtonText}>CANCELLED</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+    </Modal>
+  );
+};
+
+
+// =================================================================
+// ASSIGN STAFF MODAL COMPONENT (NEW)
+// =================================================================
+const AssignStaffModal = ({ visible, onClose, onSubmit, orderId }) => {
+    const [staffList, setStaffList] = useState([]);
+    const [selectedStaffId, setSelectedStaffId] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchStaff = async () => {
+            if (visible && orderId) {
+                setLoading(true);
+                try {
+                    const response = await api.get(`/mobile/staff/orders/${orderId}/available-staff`);
+                    setStaffList(response.data);
+                    // Automatically select the first staff member if list is not empty
+                    if (response.data.length > 0) {
+                        setSelectedStaffId(response.data[0].id);
+                    }
+                } catch (error) {
+                    Alert.alert('Error', 'Failed to fetch available staff.');
+                    console.error("Fetch Staff Error:", error);
+                } finally {
+                    setLoading(false);
+                }
+            }
+        };
+        fetchStaff();
+    }, [visible, orderId]);
+
+    const handleSubmit = () => {
+        if (!selectedStaffId) {
+            Alert.alert('Selection Required', 'Please select a staff member to assign.');
+            return;
+        }
+        onSubmit(selectedStaffId);
+    };
+
     return (
         <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
             <View style={modalStyles.overlay}>
-                <View style={[modalStyles.modalContainer, { width: width * 0.85 }]}>
+                <View style={[modalStyles.modalContainer, { width: width * 0.9 }]}>
                     <View style={modalStyles.header}>
-                        <Text style={modalStyles.headerTitle}>Update Order Status</Text>
+                        <Text style={modalStyles.headerTitle}>Assign Delivery Staff</Text>
                         <TouchableOpacity onPress={onClose}>
-                            <MaterialCommunityIcons 
-                                name="close-circle" 
-                                size={30} 
-                                color={COLORS.textLight} 
-                            />
+                            <MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} />
                         </TouchableOpacity>
-                    </View>
-                    
-                    <View style={modalStyles.productInfoContainer}>
-                        <Text style={modalStyles.productNameTitle}>{productName}</Text>
                     </View>
 
-                    <View style={modalStyles.statusButtonContainer}>
-                        <TouchableOpacity 
-                            style={[modalStyles.statusButton, {backgroundColor: COLORS.warning}]} 
-                            onPress={() => onSubmit('pending')}
-                        >
-                            <MaterialCommunityIcons name="clock-outline" size={20} color={COLORS.white} />
-                            <Text style={modalStyles.statusButtonText}>PENDING</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                            style={[modalStyles.statusButton, {backgroundColor: COLORS.secondary}]} 
-                            onPress={() => onSubmit('completed')}
-                        >
-                            <MaterialCommunityIcons name="check-circle-outline" size={20} color={COLORS.white} />
-                            <Text style={modalStyles.statusButtonText}>COMPLETED</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                            style={[modalStyles.statusButton, {backgroundColor: COLORS.primary}]} 
-                            onPress={() => onSubmit('delivered')}
-                        >
-                            <MaterialCommunityIcons name="truck-delivery-outline" size={20} color={COLORS.white} />
-                            <Text style={modalStyles.statusButtonText}>DELIVERED</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                            style={[modalStyles.statusButton, {backgroundColor: COLORS.danger}]} 
-                            onPress={() => onSubmit('cancelled')}
-                        >
-                            <MaterialCommunityIcons name="close-circle-outline" size={20} color={COLORS.white} />
-                            <Text style={modalStyles.statusButtonText}>CANCELLED</Text>
-                        </TouchableOpacity>
-                    </View>
+                    {loading ? (
+                        <ActivityIndicator size="large" color={COLORS.primary} style={{ marginVertical: 40 }} />
+                    ) : staffList.length > 0 ? (
+                        <View>
+                            <Text style={modalStyles.pickerLabel}>Select staff for this delivery:</Text>
+                            <View style={styles.pickerContainer}>
+                                <Picker
+                                    selectedValue={selectedStaffId}
+                                    onValueChange={(itemValue) => setSelectedStaffId(itemValue)}
+                                    style={styles.picker}
+                                >
+                                    {staffList.map((staff) => (
+                                        <Picker.Item key={staff.id} label={`${staff.staff_username} (${staff.email})`} value={staff.id} />
+                                    ))}
+                                </Picker>
+                            </View>
+                            <TouchableOpacity
+                                style={[styles.button, { marginTop: 20, backgroundColor: COLORS.success }]}
+                                onPress={handleSubmit}
+                            >
+                                <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.white} />
+                                <Text style={styles.buttonText}>Confirm Assignment</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <View style={styles.emptyState}>
+                            <MaterialCommunityIcons name="account-multiple-remove" size={48} color={COLORS.textLighter} />
+                            <Text style={styles.emptyStateText}>No available staff found</Text>
+                            <Text style={styles.emptyStateSubtext}>No staff assigned to this order's location.</Text>
+                        </View>
+                    )}
                 </View>
             </View>
         </Modal>
     );
 };
 
+
 // =================================================================
-// SCANNER SCREEN COMPONENT
+// SCANNER SCREEN COMPONENT (No Changes)
 // =================================================================
 export function ScannerScreen() {
-    const navigation = useNavigation();
-    const [permission, requestPermission] = useCameraPermissions();
-    const [scannedData, setScannedData] = useState(null);
-    const [signature, setSignature] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const sigRef = useRef();
+  const navigation = useNavigation();
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scannedData, setScannedData] = useState(null);
+  const [signature, setSignature] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const sigRef = useRef();
 
-    if (!permission) return <View />;
-    if (!permission.granted) {
-        return (
-            <SafeAreaView style={[styles.scannerContainer, styles.center]}>
-                <MaterialCommunityIcons 
-                    name="camera-off" 
-                    size={48} 
-                    color={COLORS.textLighter} 
-                    style={{ marginBottom: 20 }}
-                />
-                <Text style={styles.permissionText}>
-                    Camera permission is required to scan QR codes
-                </Text>
-                <TouchableOpacity 
-                    style={[styles.button, { marginTop: 20 }]} 
-                    onPress={requestPermission}
-                >
-                    <Text style={styles.buttonText}>Grant Permission</Text>
-                </TouchableOpacity>
-            </SafeAreaView>
-        );
-    }
-    
-    const handleBarCodeScanned = ({ data }) => {
-        try {
-            const parsedData = JSON.parse(data);
-            if (parsedData.order_id && parsedData.product_name) {
-                setScannedData(parsedData);
-                Alert.alert(
-                    'QR Code Scanned', 
-                    `Product: ${parsedData.product_name}`,
-                    [{ text: 'OK', onPress: () => {} }]
-                );
-            } else { 
-                throw new Error("Invalid QR code format"); 
-            }
-        } catch (error) {
-            Alert.alert(
-                'Invalid QR Code', 
-                error.message, 
-                [{ text: 'Try Again' }]
-            );
-        }
-    };
-    
-    const handleSignatureOK = (sig) => setSignature(sig);
-    const handleSignatureEnd = () => { if (sigRef.current) { sigRef.current.readSignature(); } };
-    const handleClearSignature = () => { 
-        if (sigRef.current) { 
-            sigRef.current.clearSignature(); 
-        } 
-        setSignature(null); 
-    };
+  if (!permission) return <View />;
+  if (!permission.granted) {
+      return (
+          <SafeAreaView style={[styles.scannerContainer, styles.center]}>
+              <MaterialCommunityIcons 
+                  name="camera-off" 
+                  size={48} 
+                  color={COLORS.textLighter} 
+                  style={{ marginBottom: 20 }}
+              />
+              <Text style={styles.permissionText}>
+                  Camera permission is required to scan QR codes
+              </Text>
+              <TouchableOpacity 
+                  style={[styles.button, { marginTop: 20 }]} 
+                  onPress={requestPermission}
+              >
+                  <Text style={styles.buttonText}>Grant Permission</Text>
+              </TouchableOpacity>
+          </SafeAreaView>
+      );
+  }
+  
+  const handleBarCodeScanned = ({ data }) => {
+      try {
+          const parsedData = JSON.parse(data);
+          if (parsedData.order_id && parsedData.product_name) {
+              setScannedData(parsedData);
+              Alert.alert(
+                  'QR Code Scanned', 
+                  `Product: ${parsedData.product_name}`,
+                  [{ text: 'OK', onPress: () => {} }]
+              );
+          } else { 
+              throw new Error("Invalid QR code format"); 
+          }
+      } catch (error) {
+          Alert.alert(
+              'Invalid QR Code', 
+              error.message, 
+              [{ text: 'Try Again' }]
+          );
+      }
+  };
+  
+  const handleSignatureOK = (sig) => setSignature(sig);
+  const handleSignatureEnd = () => { if (sigRef.current) { sigRef.current.readSignature(); } };
+  const handleClearSignature = () => { 
+      if (sigRef.current) { 
+          sigRef.current.clearSignature(); 
+      } 
+      setSignature(null); 
+  };
 
-    const handleSubmit = async () => {
-        if (!signature) { 
-            Alert.alert(
-                'Signature Required', 
-                'Please provide a signature before submitting.',
-                [{ text: 'OK' }]
-            ); 
-            return; 
-        }
-        
-        setIsLoading(true);
-        const formData = new FormData();
-        formData.append('qr_data', JSON.stringify(scannedData));
-        formData.append('signature', { 
-            uri: signature, 
-            name: `signature_${Date.now()}.png`, 
-            type: 'image/png' 
-        });
-        
-        try {
-            const response = await api.post(
-                '/mobile/staff/process-scan', 
-                formData, 
-                { headers: { 'Content-Type': 'multipart/form-data' } }
-            );
-            Alert.alert('Success', response.data.message);
-            navigation.goBack();
-        } catch (error) {
-            Alert.alert(
-                'Error', 
-                error.response?.data?.message || 'Failed to process the scan'
-            );
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  const handleSubmit = async () => {
+      if (!signature) { 
+          Alert.alert(
+              'Signature Required', 
+              'Please provide a signature before submitting.',
+              [{ text: 'OK' }]
+          ); 
+          return; 
+      }
+      
+      setIsLoading(true);
+      const formData = new FormData();
+      formData.append('qr_data', JSON.stringify(scannedData));
+      formData.append('signature', { 
+          uri: signature, 
+          name: `signature_${Date.now()}.png`, 
+          type: 'image/png' 
+      });
+      
+      try {
+          const response = await api.post(
+              '/mobile/staff/process-scan', 
+              formData, 
+              { headers: { 'Content-Type': 'multipart/form-data' } }
+          );
+          Alert.alert('Success', response.data.message);
+          navigation.goBack();
+      } catch (error) {
+          Alert.alert(
+              'Error', 
+              error.response?.data?.message || 'Failed to process the scan'
+          );
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
-    if (isLoading) {
-        return (
-            <SafeAreaView style={[styles.scannerContainer, styles.center]}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.loadingText}>Processing your request...</Text>
-            </SafeAreaView>
-        );
-    }
+  if (isLoading) {
+      return (
+          <SafeAreaView style={[styles.scannerContainer, styles.center]}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={styles.loadingText}>Processing your request...</Text>
+          </SafeAreaView>
+      );
+  }
 
-    return (
-        <SafeAreaView style={styles.scannerContainer}>
-            {!scannedData ? (
-                <CameraView 
-                    onBarcodeScanned={scannedData ? undefined : handleBarCodeScanned} 
-                    barcodeScannerSettings={{ barcodeTypes: ["qr"] }} 
-                    style={StyleSheet.absoluteFillObject}
-                >
-                    <View style={styles.scannerOverlay}>
-                        <View style={styles.scannerFrame}>
-                            <View style={[styles.scannerCorner, styles.cornerTopLeft]} />
-                            <View style={[styles.scannerCorner, styles.cornerTopRight]} />
-                            <View style={[styles.scannerCorner, styles.cornerBottomLeft]} />
-                            <View style={[styles.scannerCorner, styles.cornerBottomRight]} />
-                        </View>
-                        <Text style={styles.scanPrompt}>Align QR code within the frame</Text>
-                    </View>
-                </CameraView>
-            ) : (
-                <View style={styles.signatureContainer}>
-                    <View style={styles.signatureHeader}>
-                        <Text style={styles.signatureTitle}>Customer Signature</Text>
-                        <Text style={styles.signatureSubtitle}>
-                            Please sign below to confirm receipt
-                        </Text>
-                    </View>
-                    
-                    <View style={styles.signatureBox}>
-                        <SignatureScreen 
-                            ref={sigRef} 
-                            onEnd={handleSignatureEnd} 
-                            onOK={handleSignatureOK} 
-                            webStyle={`.m-signature-pad--footer {display: none;}`} 
-                            backgroundColor={COLORS.background}
-                            penColor={COLORS.textDark}
-                        />
-                    </View>
-                    
-                    <View style={styles.buttonRow}>
-                        <TouchableOpacity 
-                            style={[styles.button, styles.clearButton]} 
-                            onPress={handleClearSignature}
-                        >
-                            <MaterialCommunityIcons 
-                                name="eraser" 
-                                size={18} 
-                                color={COLORS.danger} 
-                            />
-                            <Text style={styles.clearButtonText}>Clear</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity 
-                            style={[
-                                styles.button, 
-                                styles.submitButton, 
-                                !signature && styles.disabledButton
-                            ]} 
-                            onPress={handleSubmit} 
-                            disabled={!signature}
-                        >
-                            <MaterialCommunityIcons 
-                                name="check-circle" 
-                                size={18} 
-                                color={COLORS.white} 
-                            />
-                            <Text style={styles.buttonText}>Submit</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
-        </SafeAreaView>
-    );
+  return (
+      <SafeAreaView style={styles.scannerContainer}>
+          {!scannedData ? (
+              <CameraView 
+                  onBarcodeScanned={scannedData ? undefined : handleBarCodeScanned} 
+                  barcodeScannerSettings={{ barcodeTypes: ["qr"] }} 
+                  style={StyleSheet.absoluteFillObject}
+              >
+                  <View style={styles.scannerOverlay}>
+                      <View style={styles.scannerFrame}>
+                          <View style={[styles.scannerCorner, styles.cornerTopLeft]} />
+                          <View style={[styles.scannerCorner, styles.cornerTopRight]} />
+                          <View style={[styles.scannerCorner, styles.cornerBottomLeft]} />
+                          <View style={[styles.scannerCorner, styles.cornerBottomRight]} />
+                      </View>
+                      <Text style={styles.scanPrompt}>Align QR code within the frame</Text>
+                  </View>
+              </CameraView>
+          ) : (
+              <View style={styles.signatureContainer}>
+                  <View style={styles.signatureHeader}>
+                      <Text style={styles.signatureTitle}>Customer Signature</Text>
+                      <Text style={styles.signatureSubtitle}>
+                          Please sign below to confirm receipt
+                      </Text>
+                  </View>
+                  
+                  <View style={styles.signatureBox}>
+                      <SignatureScreen 
+                          ref={sigRef} 
+                          onEnd={handleSignatureEnd} 
+                          onOK={handleSignatureOK} 
+                          webStyle={`.m-signature-pad--footer {display: none;}`} 
+                          backgroundColor={COLORS.background}
+                          penColor={COLORS.textDark}
+                      />
+                  </View>
+                  
+                  <View style={styles.buttonRow}>
+                      <TouchableOpacity 
+                          style={[styles.button, styles.clearButton]} 
+                          onPress={handleClearSignature}
+                      >
+                          <MaterialCommunityIcons 
+                              name="eraser" 
+                              size={18} 
+                              color={COLORS.danger} 
+                          />
+                          <Text style={styles.clearButtonText}>Clear</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                          style={[
+                              styles.button, 
+                              styles.submitButton, 
+                              !signature && styles.disabledButton
+                          ]} 
+                          onPress={handleSubmit} 
+                          disabled={!signature}
+                      >
+                          <MaterialCommunityIcons 
+                              name="check-circle" 
+                              size={18} 
+                              color={COLORS.white} 
+                          />
+                          <Text style={styles.buttonText}>Submit</Text>
+                      </TouchableOpacity>
+                  </View>
+              </View>
+          )}
+      </SafeAreaView>
+  );
 }
 
 // =================================================================
-// ORDERS SCREEN COMPONENT (DEFAULT EXPORT)
+// ORDERS SCREEN COMPONENT (Modified)
 // =================================================================
 export default function OrdersScreen() {
     const navigation = useNavigation();
@@ -480,6 +535,8 @@ export default function OrdersScreen() {
 
     const [isViewModalVisible, setViewModalVisible] = useState(false);
     const [isStatusModalVisible, setStatusModalVisible] = useState(false);
+    const [isAssignStaffModalVisible, setAssignStaffModalVisible] = useState(false);
+    
     const [selectedGroupData, setSelectedGroupData] = useState(null);
     const [selectedProduct, setSelectedProduct] = useState(null);
 
@@ -521,43 +578,40 @@ export default function OrdersScreen() {
     const handleCloseModals = () => { 
         setViewModalVisible(false); 
         setStatusModalVisible(false); 
+        setAssignStaffModalVisible(false);
         setSelectedGroupData(null); 
         setSelectedProduct(null); 
     };
 
-    const handleStatusSubmit = async (status) => {
+    const handleStatusSubmit = async (status, staffId = null) => {
         if (!selectedProduct) return;
+
+        // If 'out for delivery' is selected, open the staff assignment modal instead of submitting directly
+        if (status === 'out for delivery' && !staffId) {
+            setStatusModalVisible(false);
+            setAssignStaffModalVisible(true);
+            return;
+        }
+
         try {
+            const payload = { status };
+            if (staffId) {
+                payload.staff_id = staffId;
+            }
+            
             await api.post(
-                `/mobile/staff/order/${selectedProduct.id}/update-status`, 
-                { status: status }
+                `/mobile/staff/orders/${selectedProduct.id}/update-status`, 
+                payload
             );
             
             Alert.alert(
                 'Status Updated', 
-                `Status for ${selectedProduct.exclusive_deal.product.generic_name} updated to "${status}".`
+                `Order status updated to "${status}".`
             );
             
-            const localOrderArray = Object.values(selectedGroupData.orderGroup || {});
-            const updatedOrderGroup = localOrderArray.map(order => 
-                order.id === selectedProduct.id ? { ...order, status: status } : order
-            );
+            handleCloseModals();
+            fetchOrders(); // Refresh all data after an update
 
-            const filteredGroup = updatedOrderGroup.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
-            
-            setSelectedGroupData(prevData => ({
-                ...prevData, 
-                orderGroup: filteredGroup
-            }));
-            
-            setStatusModalVisible(false);
-            setSelectedProduct(null);
-            
-            if (filteredGroup.length === 0) {
-                setViewModalVisible(false);
-            }
-            
-            fetchOrders();
         } catch (error) {
             Alert.alert(
                 'Update Failed', 
@@ -566,38 +620,21 @@ export default function OrdersScreen() {
         }
     };
 
+    const handleAssignStaffSubmit = (staffId) => {
+        // Now call the original submit handler with the status and the selected staff ID
+        handleStatusSubmit('out for delivery', staffId);
+    };
+
     const companyNames = ['All', ...new Set(
         Object.values(data.ordersByProvince)
             .flatMap(c => Object.keys(c))
     )];
     
     const summaryData = data.summary ? [
-        { 
-            title: 'Orders This Week', 
-            count: data.summary.ordersThisWeek, 
-            icon: 'chart-line',
-            color: COLORS.primary
-        }, 
-        { 
-            title: 'Pending Orders', 
-            count: data.summary.pendingOrders, 
-            icon: 'clock-outline',
-            color: COLORS.warning
-        }, 
-        { 
-            title: 'Cannot Fulfill', 
-            count: data.summary.insufficientOrders, 
-            icon: 'alert-circle-outline',
-            color: COLORS.danger,
-            isAlert: true 
-        }, 
-        { 
-            title: 'Low Stock Items', 
-            count: data.summary.insufficientProducts, 
-            icon: 'package-variant-closed-minus',
-            color: COLORS.danger,
-            isAlert: true 
-        }, 
+        { title: 'Orders This Week', count: data.summary.ordersThisWeek, icon: 'chart-line', color: COLORS.primary },
+        { title: 'Pending Orders', count: data.summary.pendingOrders, icon: 'clock-outline', color: COLORS.warning },
+        { title: 'Cannot Fulfill', count: data.summary.insufficientOrders, icon: 'alert-circle-outline', color: COLORS.danger, isAlert: true },
+        { title: 'Low Stock Items', count: data.summary.insufficientProducts, icon: 'package-variant-closed-minus', color: COLORS.danger, isAlert: true },
     ] : [];
 
     return (
@@ -615,6 +652,13 @@ export default function OrdersScreen() {
                 onSubmit={handleStatusSubmit} 
                 productName={selectedProduct?.exclusive_deal?.product?.generic_name || ''} 
             />
+
+            <AssignStaffModal
+                visible={isAssignStaffModalVisible}
+                onClose={handleCloseModals}
+                onSubmit={handleAssignStaffSubmit}
+                orderId={selectedProduct?.id}
+            />
             
             <ScrollView 
                 contentContainerStyle={styles.scrollContainer}
@@ -629,23 +673,12 @@ export default function OrdersScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 {loading && !refreshing ? (
-                    <ActivityIndicator 
-                        size="large" 
-                        color={COLORS.primaryDark} 
-                        style={styles.loader}
-                    />
+                    <ActivityIndicator size="large" color={COLORS.primaryDark} style={styles.loader}/>
                 ) : error ? (
                     <View style={styles.errorContainer}>
-                        <MaterialCommunityIcons 
-                            name="alert-circle-outline" 
-                            size={48} 
-                            color={COLORS.danger} 
-                        />
+                        <MaterialCommunityIcons name="alert-circle-outline" size={48} color={COLORS.danger} />
                         <Text style={styles.errorText}>{error}</Text>
-                        <TouchableOpacity 
-                            style={styles.button} 
-                            onPress={fetchOrders}
-                        >
+                        <TouchableOpacity style={styles.button} onPress={fetchOrders}>
                             <Text style={styles.buttonText}>Retry</Text>
                         </TouchableOpacity>
                     </View>
@@ -654,21 +687,12 @@ export default function OrdersScreen() {
                         <Text style={styles.screenTitle}>Order Management</Text>
                         
                         <View style={styles.summaryGrid}>
-                            {summaryData.map((item, i) => (
-                                <SummaryCard 
-                                    key={i} 
-                                    {...item} 
-                                />
-                            ))}
+                            {summaryData.map((item, i) => <SummaryCard key={i} {...item} />)}
                         </View>
                         
                         <View style={styles.filterSection}>
                             <View style={styles.searchContainer}>
-                                <MaterialCommunityIcons 
-                                    name="magnify" 
-                                    size={22} 
-                                    color={COLORS.textLighter} 
-                                />
+                                <MaterialCommunityIcons name="magnify" size={22} color={COLORS.textLighter} />
                                 <TextInput 
                                     placeholder="Search Customer..." 
                                     placeholderTextColor={COLORS.textLighter}
@@ -677,7 +701,6 @@ export default function OrdersScreen() {
                                     onChangeText={t => setFilters(f => ({ ...f, search: t }))} 
                                 />
                             </View>
-                            
                             <View style={styles.pickerContainer}>
                                 <Picker 
                                     selectedValue={filters.company} 
@@ -685,13 +708,7 @@ export default function OrdersScreen() {
                                     style={styles.picker}
                                     dropdownIconColor={COLORS.primary}
                                 >
-                                    {companyNames.map(n => (
-                                        <Picker.Item 
-                                            key={n} 
-                                            label={n === 'All' ? 'All Companies' : n} 
-                                            value={n} 
-                                        />
-                                    ))}
+                                    {companyNames.map(n => <Picker.Item key={n} label={n === 'All' ? 'All Companies' : n} value={n} />)}
                                 </Picker>
                             </View>
                         </View>
@@ -701,11 +718,7 @@ export default function OrdersScreen() {
                                 style={[styles.button, styles.scanButton]} 
                                 onPress={() => navigation.navigate('ScannerScreen')}
                             >
-                                <MaterialCommunityIcons 
-                                    name="qrcode-scan" 
-                                    size={20} 
-                                    color={COLORS.white} 
-                                />
+                                <MaterialCommunityIcons name="qrcode-scan" size={20} color={COLORS.white} />
                                 <Text style={styles.buttonText}>Scan QR Code</Text>
                             </TouchableOpacity>
                         </View>
@@ -713,21 +726,16 @@ export default function OrdersScreen() {
                         {Object.entries(data.ordersByProvince).map(([province, companies]) => (
                             <View key={province} style={styles.provinceSection}>
                                 <View style={styles.sectionHeader}>
-                                    <MaterialCommunityIcons 
-                                        name="map-marker" 
-                                        size={20} 
-                                        color={COLORS.primary} 
-                                    />
+                                    <MaterialCommunityIcons name="map-marker" size={20} color={COLORS.primary} />
                                     <Text style={styles.provinceTitle}>{province}</Text>
                                 </View>
                                 
                                 {Object.entries(companies)
                                     .filter(([co]) => filters.company === 'All' || filters.company === co)
                                     .map(([co, employees]) => {
-                                        const filteredEmployees = Object.entries(employees)
-                                            .filter(([emp]) => 
-                                                emp.toLowerCase().includes(filters.search.toLowerCase())
-                                            );
+                                        const filteredEmployees = Object.entries(employees).filter(([emp]) => 
+                                            emp.toLowerCase().includes(filters.search.toLowerCase())
+                                        );
                                         
                                         if (filteredEmployees.length === 0) return null;
                                         
@@ -739,10 +747,7 @@ export default function OrdersScreen() {
                                                         key={emp} 
                                                         employeeInfo={emp} 
                                                         orderGroup={orders} 
-                                                        onView={() => handleOpenViewModal({
-                                                            employeeInfo: emp, 
-                                                            orderGroup: orders
-                                                        })} 
+                                                        onView={() => handleOpenViewModal({ employeeInfo: emp, orderGroup: orders })} 
                                                     />
                                                 ))}
                                             </View>
@@ -753,17 +758,9 @@ export default function OrdersScreen() {
                         
                         {Object.keys(data.ordersByProvince).length === 0 && (
                             <View style={styles.emptyState}>
-                                <MaterialCommunityIcons 
-                                    name="package-variant-closed" 
-                                    size={48} 
-                                    color={COLORS.textLighter} 
-                                />
-                                <Text style={styles.emptyStateText}>
-                                    No orders found
-                                </Text>
-                                <Text style={styles.emptyStateSubtext}>
-                                    Orders will appear here when available
-                                </Text>
+                                <MaterialCommunityIcons name="package-variant-closed" size={48} color={COLORS.textLighter} />
+                                <Text style={styles.emptyStateText}>No orders found</Text>
+                                <Text style={styles.emptyStateSubtext}>Orders will appear here when available</Text>
                             </View>
                         )}
                     </>
@@ -774,7 +771,7 @@ export default function OrdersScreen() {
 }
 
 // =================================================================
-// SUB-COMPONENTS
+// SUB-COMPONENTS (No Changes)
 // =================================================================
 const SummaryCard = ({ title, count, icon, color, isAlert }) => (
     <View style={[
@@ -807,7 +804,6 @@ const SummaryCard = ({ title, count, icon, color, isAlert }) => (
 const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
     const [name, date] = employeeInfo.split('|');
 
-    // Count insufficient stock orders
     const insufficientCount = Object.values(orderGroup || {}).reduce((count, order) => {
         if (!order || typeof order !== 'object') return count;
         const available = order.available_stock;
@@ -860,525 +856,532 @@ const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
     );
 };
 
+
 // =================================================================
 // STYLESHEETS
 // =================================================================
 const styles = StyleSheet.create({
-    // Base Container
-    container: { 
-        flex: 1, 
-        backgroundColor: COLORS.background 
-    },
-    scrollContainer: { 
-        padding: 16, 
-        paddingBottom: 20 
-    },
-    loader: {
-        marginTop: 40
-    },
-    
-    // Screen Title
-    screenTitle: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: COLORS.textDark,
-        marginBottom: 16
-    },
-    
-    // Summary Cards
-    summaryGrid: { 
-        flexDirection: 'row', 
-        flexWrap: 'wrap', 
-        justifyContent: 'space-between', 
-        marginBottom: 16 
-    },
-    summaryCard: { 
-        width: '48%', 
-        backgroundColor: COLORS.white, 
-        padding: 16, 
-        borderRadius: 8, 
-        marginBottom: 12, 
-        elevation: 1,
-        shadowColor: COLORS.textDark,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        borderLeftWidth: 4
-    },
-    alertCard: { 
-        backgroundColor: COLORS.danger 
-    }, 
-    summaryCount: { 
-        fontSize: 22, 
-        fontWeight: 'bold', 
-        color: COLORS.textDark 
-    }, 
-    summaryTitle: { 
-        fontSize: 14, 
-        color: COLORS.textLight, 
-        marginTop: 4 
-    }, 
-    alertText: { 
-        color: COLORS.white 
-    },
-    
-    // Filter Section
-    filterSection: {
-        backgroundColor: COLORS.white,
-        borderRadius: 8,
-        padding: 16,
-        marginBottom: 16,
-        elevation: 1
-    },
-    searchContainer: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        backgroundColor: COLORS.background, 
-        borderRadius: 8, 
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        marginBottom: 12 
-    },
-    searchInput: { 
-        flex: 1, 
-        fontSize: 16, 
-        marginLeft: 8,
-        color: COLORS.textDark
-    }, 
-    pickerContainer: { 
-        backgroundColor: COLORS.background, 
-        borderRadius: 8, 
-        overflow: 'hidden'
-    }, 
-    picker: { 
-        width: '100%',
-        color: COLORS.textDark
-    },
-    
-    // Action Bar
-    actionBar: {
-        marginBottom: 16
-    },
-    scanButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        paddingVertical: 12
-    },
-    
-    // Province/Company Sections
-    provinceSection: { 
-        backgroundColor: COLORS.white, 
-        borderRadius: 8, 
-        padding: 16, 
-        marginBottom: 16,
-        elevation: 1
-    },
-    sectionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
-        paddingBottom: 12
-    },
-    provinceTitle: { 
-        fontSize: 18, 
-        fontWeight: 'bold', 
-        color: COLORS.textDark,
-        marginLeft: 8
-    },
-    companySection: { 
-        marginTop: 8 
-    },
-    companyTitle: { 
-        fontSize: 16, 
-        fontWeight: '600', 
-        color: COLORS.textMedium, 
-        marginBottom: 8 
-    },
-    
-    // Order Items
-    orderItem: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        paddingVertical: 12, 
-        borderBottomWidth: 1, 
-        borderBottomColor: COLORS.borderLight 
-    },
-    orderInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1
-    },
-    orderTextContainer: {
-        marginLeft: 12
-    },
-    orderEmployee: { 
-        fontSize: 16, 
-        fontWeight: '600',
-        color: COLORS.textDark
-    }, 
-    orderDate: { 
-        fontSize: 13, 
-        color: COLORS.textLight,
-        marginTop: 2
-    },
-    orderActions: {
-        flexDirection: 'row',
-        alignItems: 'center'
-    },
-    badge: { 
-        backgroundColor: COLORS.danger, 
-        borderRadius: 10, 
-        minWidth: 20, 
-        height: 20, 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        marginRight: 8 
-    },
-    badgeText: { 
-        color: COLORS.white, 
-        fontSize: 12, 
-        fontWeight: 'bold', 
-        paddingHorizontal: 4 
-    }, 
-    viewButton: { 
-        flexDirection: 'row',
-        alignItems: 'center'
-    }, 
-    viewButtonText: { 
-        color: COLORS.primary, 
-        fontWeight: '600',
-        marginRight: 4
-    },
-    
-    // Buttons
-    button: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        backgroundColor: COLORS.primary, 
-        paddingVertical: 12, 
-        borderRadius: 8, 
-        gap: 8,
-        elevation: 2
-    }, 
-    buttonText: { 
-        color: COLORS.white, 
-        fontWeight: 'bold', 
-        fontSize: 16 
-    },
-    clearButton: { 
-        backgroundColor: COLORS.dangerLight, 
-        width: '48%' 
-    }, 
-    clearButtonText: { 
-        color: COLORS.danger, 
-        fontWeight: 'bold' 
-    },
-    submitButton: { 
-        backgroundColor: COLORS.primary, 
-        width: '48%' 
-    }, 
-    disabledButton: { 
-        backgroundColor: COLORS.primaryLight 
-    },
-    
-    // Error State
-    errorContainer: {
-        alignItems: 'center',
-        padding: 20,
-        marginTop: 40
-    },
-    errorText: { 
-        textAlign: 'center', 
-        color: COLORS.danger, 
-        marginVertical: 16, 
-        fontSize: 16 
-    },
-    
-    // Empty State
-    emptyState: {
-        alignItems: 'center',
-        padding: 40,
-        marginTop: 20
-    },
-    emptyStateText: {
-        fontSize: 16,
-        color: COLORS.textMedium,
-        marginTop: 12,
-        fontWeight: '500'
-    },
-    emptyStateSubtext: {
-        fontSize: 14,
-        color: COLORS.textLight,
-        marginTop: 4,
-        textAlign: 'center'
-    },
-    
-    // Scanner Screen Styles
-    scannerContainer: { 
-        flex: 1, 
-        backgroundColor: COLORS.white 
-    }, 
-    center: { 
-        justifyContent: 'center', 
-        alignItems: 'center' 
-    }, 
-    permissionText: { 
-        fontSize: 16, 
-        textAlign: 'center', 
-        paddingHorizontal: 20,
-        color: COLORS.textMedium
-    },
-    loadingText: { 
-        marginTop: 16, 
-        fontSize: 16,
-        color: COLORS.textMedium
-    },
-    
-    // Scanner Overlay
-    scannerOverlay: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)'
-    },
-    scannerFrame: {
-        width: 250,
-        height: 250,
-        borderWidth: 2,
-        borderColor: COLORS.white,
-        position: 'relative'
-    },
-    scannerCorner: {
-        position: 'absolute',
-        width: 30,
-        height: 30,
-        borderColor: COLORS.primary
-    },
-    cornerTopLeft: {
-        top: -2,
-        left: -2,
-        borderTopWidth: 4,
-        borderLeftWidth: 4
-    },
-    cornerTopRight: {
-        top: -2,
-        right: -2,
-        borderTopWidth: 4,
-        borderRightWidth: 4
-    },
-    cornerBottomLeft: {
-        bottom: -2,
-        left: -2,
-        borderBottomWidth: 4,
-        borderLeftWidth: 4
-    },
-    cornerBottomRight: {
-        bottom: -2,
-        right: -2,
-        borderBottomWidth: 4,
-        borderRightWidth: 4
-    },
-    scanPrompt: { 
-        color: COLORS.white, 
-        fontSize: 16, 
-        marginTop: 20,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        padding: 8,
-        borderRadius: 4
-    },
-    
-    // Signature Screen
-    signatureContainer: { 
-        flex: 1, 
-        padding: 20, 
-        backgroundColor: COLORS.white 
-    }, 
-    signatureHeader: {
-        marginBottom: 16
-    },
-    signatureTitle: { 
-        fontSize: 20, 
-        fontWeight: 'bold', 
-        textAlign: 'center',
-        color: COLORS.textDark
-    },
-    signatureSubtitle: {
-        fontSize: 14,
-        color: COLORS.textLight,
-        textAlign: 'center',
-        marginTop: 4
-    },
-    signatureBox: { 
-        flex: 1, 
-        borderWidth: 1, 
-        borderColor: COLORS.border, 
-        borderRadius: 8, 
-        marginBottom: 20 
-    },
-    buttonRow: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between' 
-    }
+  // Base Container
+  container: { 
+      flex: 1, 
+      backgroundColor: COLORS.background 
+  },
+  scrollContainer: { 
+      padding: 16, 
+      paddingBottom: 20 
+  },
+  loader: {
+      marginTop: 40
+  },
+  
+  // Screen Title
+  screenTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: COLORS.textDark,
+      marginBottom: 16
+  },
+  
+  // Summary Cards
+  summaryGrid: { 
+      flexDirection: 'row', 
+      flexWrap: 'wrap', 
+      justifyContent: 'space-between', 
+      marginBottom: 16 
+  },
+  summaryCard: { 
+      width: '48%', 
+      backgroundColor: COLORS.white, 
+      padding: 16, 
+      borderRadius: 8, 
+      marginBottom: 12, 
+      elevation: 1,
+      shadowColor: COLORS.textDark,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center',
+      borderLeftWidth: 4
+  },
+  alertCard: { 
+      backgroundColor: COLORS.danger 
+  }, 
+  summaryCount: { 
+      fontSize: 22, 
+      fontWeight: 'bold', 
+      color: COLORS.textDark 
+  }, 
+  summaryTitle: { 
+      fontSize: 14, 
+      color: COLORS.textLight, 
+      marginTop: 4 
+  }, 
+  alertText: { 
+      color: COLORS.white 
+  },
+  
+  // Filter Section
+  filterSection: {
+      backgroundColor: COLORS.white,
+      borderRadius: 8,
+      padding: 16,
+      marginBottom: 16,
+      elevation: 1
+  },
+  searchContainer: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      backgroundColor: COLORS.background, 
+      borderRadius: 8, 
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginBottom: 12 
+  },
+  searchInput: { 
+      flex: 1, 
+      fontSize: 16, 
+      marginLeft: 8,
+      color: COLORS.textDark
+  }, 
+  pickerContainer: { 
+      backgroundColor: COLORS.background, 
+      borderRadius: 8, 
+      overflow: 'hidden'
+  }, 
+  picker: { 
+      width: '100%',
+      color: COLORS.textDark
+  },
+  
+  // Action Bar
+  actionBar: {
+      marginBottom: 16
+  },
+  scanButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 12
+  },
+  
+  // Province/Company Sections
+  provinceSection: { 
+      backgroundColor: COLORS.white, 
+      borderRadius: 8, 
+      padding: 16, 
+      marginBottom: 16,
+      elevation: 1
+  },
+  sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+      paddingBottom: 12
+  },
+  provinceTitle: { 
+      fontSize: 18, 
+      fontWeight: 'bold', 
+      color: COLORS.textDark,
+      marginLeft: 8
+  },
+  companySection: { 
+      marginTop: 8 
+  },
+  companyTitle: { 
+      fontSize: 16, 
+      fontWeight: '600', 
+      color: COLORS.textMedium, 
+      marginBottom: 8 
+  },
+  
+  // Order Items
+  orderItem: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      paddingVertical: 12, 
+      borderBottomWidth: 1, 
+      borderBottomColor: COLORS.borderLight 
+  },
+  orderInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1
+  },
+  orderTextContainer: {
+      marginLeft: 12
+  },
+  orderEmployee: { 
+      fontSize: 16, 
+      fontWeight: '600',
+      color: COLORS.textDark
+  }, 
+  orderDate: { 
+      fontSize: 13, 
+      color: COLORS.textLight,
+      marginTop: 2
+  },
+  orderActions: {
+      flexDirection: 'row',
+      alignItems: 'center'
+  },
+  badge: { 
+      backgroundColor: COLORS.danger, 
+      borderRadius: 10, 
+      minWidth: 20, 
+      height: 20, 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      marginRight: 8 
+  },
+  badgeText: { 
+      color: COLORS.white, 
+      fontSize: 12, 
+      fontWeight: 'bold', 
+      paddingHorizontal: 4 
+  }, 
+  viewButton: { 
+      flexDirection: 'row',
+      alignItems: 'center'
+  }, 
+  viewButtonText: { 
+      color: COLORS.primary, 
+      fontWeight: '600',
+      marginRight: 4
+  },
+  
+  // Buttons
+  button: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      backgroundColor: COLORS.primary, 
+      paddingVertical: 12, 
+      borderRadius: 8, 
+      gap: 8,
+      elevation: 2
+  }, 
+  buttonText: { 
+      color: COLORS.white, 
+      fontWeight: 'bold', 
+      fontSize: 16 
+  },
+  clearButton: { 
+      backgroundColor: COLORS.dangerLight, 
+      width: '48%' 
+  }, 
+  clearButtonText: { 
+      color: COLORS.danger, 
+      fontWeight: 'bold' 
+  },
+  submitButton: { 
+      backgroundColor: COLORS.primary, 
+      width: '48%' 
+  }, 
+  disabledButton: { 
+      backgroundColor: COLORS.primaryLight 
+  },
+  
+  // Error State
+  errorContainer: {
+      alignItems: 'center',
+      padding: 20,
+      marginTop: 40
+  },
+  errorText: { 
+      textAlign: 'center', 
+      color: COLORS.danger, 
+      marginVertical: 16, 
+      fontSize: 16 
+  },
+  
+  // Empty State
+  emptyState: {
+      alignItems: 'center',
+      padding: 40,
+      marginTop: 20
+  },
+  emptyStateText: {
+      fontSize: 16,
+      color: COLORS.textMedium,
+      marginTop: 12,
+      fontWeight: '500'
+  },
+  emptyStateSubtext: {
+      fontSize: 14,
+      color: COLORS.textLight,
+      marginTop: 4,
+      textAlign: 'center'
+  },
+  
+  // Scanner Screen Styles
+  scannerContainer: { 
+      flex: 1, 
+      backgroundColor: COLORS.white 
+  }, 
+  center: { 
+      justifyContent: 'center', 
+      alignItems: 'center' 
+  }, 
+  permissionText: { 
+      fontSize: 16, 
+      textAlign: 'center', 
+      paddingHorizontal: 20,
+      color: COLORS.textMedium
+  },
+  loadingText: { 
+      marginTop: 16, 
+      fontSize: 16,
+      color: COLORS.textMedium
+  },
+  
+  // Scanner Overlay
+  scannerOverlay: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0,0,0,0.5)'
+  },
+  scannerFrame: {
+      width: 250,
+      height: 250,
+      borderWidth: 2,
+      borderColor: COLORS.white,
+      position: 'relative'
+  },
+  scannerCorner: {
+      position: 'absolute',
+      width: 30,
+      height: 30,
+      borderColor: COLORS.primary
+  },
+  cornerTopLeft: {
+      top: -2,
+      left: -2,
+      borderTopWidth: 4,
+      borderLeftWidth: 4
+  },
+  cornerTopRight: {
+      top: -2,
+      right: -2,
+      borderTopWidth: 4,
+      borderRightWidth: 4
+  },
+  cornerBottomLeft: {
+      bottom: -2,
+      left: -2,
+      borderBottomWidth: 4,
+      borderLeftWidth: 4
+  },
+  cornerBottomRight: {
+      bottom: -2,
+      right: -2,
+      borderBottomWidth: 4,
+      borderRightWidth: 4
+  },
+  scanPrompt: { 
+      color: COLORS.white, 
+      fontSize: 16, 
+      marginTop: 20,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      padding: 8,
+      borderRadius: 4
+  },
+  
+  // Signature Screen
+  signatureContainer: { 
+      flex: 1, 
+      padding: 20, 
+      backgroundColor: COLORS.white 
+  }, 
+  signatureHeader: {
+      marginBottom: 16
+  },
+  signatureTitle: { 
+      fontSize: 20, 
+      fontWeight: 'bold', 
+      textAlign: 'center',
+      color: COLORS.textDark
+  },
+  signatureSubtitle: {
+      fontSize: 14,
+      color: COLORS.textLight,
+      textAlign: 'center',
+      marginTop: 4
+  },
+  signatureBox: { 
+      flex: 1, 
+      borderWidth: 1, 
+      borderColor: COLORS.border, 
+      borderRadius: 8, 
+      marginBottom: 20 
+  },
+  buttonRow: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between' 
+  }
 });
 
 const modalStyles = StyleSheet.create({
-    overlay: { 
-        flex: 1, 
-        backgroundColor: 'rgba(0, 0, 0, 0.6)', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        padding: 20 
-    },
-    modalContainer: { 
-        width: '100%', 
-        backgroundColor: COLORS.white, 
-        borderRadius: 12, 
-        padding: 20, 
-        maxHeight: '85%' 
-    },
-    header: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        paddingBottom: 12, 
-        borderBottomWidth: 1, 
-        borderBottomColor: COLORS.borderLight 
-    },
-    headerTitle: { 
-        fontSize: 18, 
-        fontWeight: 'bold', 
-        color: COLORS.textDark 
-    },
-    headerSubtitle: {
-        fontSize: 14,
-        color: COLORS.textLight,
-        marginTop: 4
-    },
-    contentScrollView: { 
-        marginVertical: 12 
-    },
-    sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 8
-    },
-    sectionTitle: { 
-        fontSize: 15, 
-        fontWeight: 'bold', 
-        color: COLORS.textDark 
-    },
-    sectionIndicator: {
-        backgroundColor: COLORS.primaryLight,
-        borderRadius: 12,
-        paddingHorizontal: 8,
-        paddingVertical: 4
-    },
-    sectionIndicatorText: {
-        fontSize: 12,
-        color: COLORS.primary,
-        fontWeight: '500'
-    },
-    table: { 
-        borderRadius: 6,
-        marginBottom: 16
-    },
-    tableRow: { 
-        flexDirection: 'row', 
-        paddingVertical: 12, 
-        paddingHorizontal: 8, 
-        borderBottomWidth: 1, 
-        borderBottomColor: COLORS.borderLight, 
-        alignItems: 'center', 
-        justifyContent: 'space-between'
-    },
-    tableCellHeader: { 
-        fontSize: 12, 
-        color: COLORS.textDark, 
-        fontWeight: 'bold' 
-    }, 
-    tableCellSub: { 
-        fontSize: 11, 
-        color: COLORS.textLight 
-    },
-    tableCell: { 
-        fontSize: 12, 
-        color: COLORS.textMedium, 
-        flex: 1, 
-        textAlign: 'center' 
-    },
-    changeStatusBtn: { 
-        flex: 1.5, 
-        backgroundColor: COLORS.primaryLight, 
-        paddingVertical: 6, 
-        borderRadius: 15, 
-        alignItems: 'center' 
-    },
-    changeStatusBtnText: { 
-        color: COLORS.primary, 
-        fontWeight: 'bold', 
-        fontSize: 11 
-    },
-    footer: { 
-        paddingTop: 16, 
-        borderTopWidth: 1, 
-        borderTopColor: COLORS.borderLight, 
-        alignItems: 'flex-end' 
-    },
-    grandTotalLabel: {
-        fontSize: 14,
-        color: COLORS.textLight
-    },
-    grandTotal: { 
-        fontSize: 20, 
-        fontWeight: 'bold', 
-        color: COLORS.textDark,
-        marginTop: 4
-    },
-    statusButtonContainer: { 
-        paddingVertical: 8 
-    },
-    statusButton: { 
-        borderRadius: 8, 
-        paddingVertical: 14, 
-        marginBottom: 10, 
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 8
-    },
-    statusButtonText: { 
-        color: COLORS.white, 
-        fontSize: 16, 
-        fontWeight: 'bold' 
-    },
-    productInfoContainer: {
-        backgroundColor: COLORS.background,
-        borderRadius: 8,
-        padding: 16,
-        marginVertical: 12
-    },
-    productNameTitle: { 
-        fontSize: 16, 
-        fontWeight: '600', 
-        textAlign: 'center', 
-        color: COLORS.textDark 
-    },
-    insufficientStockRow: { 
-        backgroundColor: COLORS.dangerLight 
-    },
-    insufficientStockText: { 
-        color: COLORS.danger, 
-        fontSize: 11, 
-        fontWeight: 'bold' 
-    },
+  overlay: { 
+      flex: 1, 
+      backgroundColor: 'rgba(0, 0, 0, 0.6)', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      padding: 20 
+  },
+  modalContainer: { 
+      width: '100%', 
+      backgroundColor: COLORS.white, 
+      borderRadius: 12, 
+      padding: 20, 
+      maxHeight: '85%' 
+  },
+  header: { 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      paddingBottom: 12, 
+      borderBottomWidth: 1, 
+      borderBottomColor: COLORS.borderLight 
+  },
+  headerTitle: { 
+      fontSize: 18, 
+      fontWeight: 'bold', 
+      color: COLORS.textDark 
+  },
+  headerSubtitle: {
+      fontSize: 14,
+      color: COLORS.textLight,
+      marginTop: 4
+  },
+  contentScrollView: { 
+      marginVertical: 12 
+  },
+  sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8
+  },
+  sectionTitle: { 
+      fontSize: 15, 
+      fontWeight: 'bold', 
+      color: COLORS.textDark 
+  },
+  sectionIndicator: {
+      backgroundColor: COLORS.primaryLight,
+      borderRadius: 12,
+      paddingHorizontal: 8,
+      paddingVertical: 4
+  },
+  sectionIndicatorText: {
+      fontSize: 12,
+      color: COLORS.primary,
+      fontWeight: '500'
+  },
+  table: { 
+      borderRadius: 6,
+      marginBottom: 16
+  },
+  tableRow: { 
+      flexDirection: 'row', 
+      paddingVertical: 12, 
+      paddingHorizontal: 8, 
+      borderBottomWidth: 1, 
+      borderBottomColor: COLORS.borderLight, 
+      alignItems: 'center', 
+      justifyContent: 'space-between'
+  },
+  tableCellHeader: { 
+      fontSize: 12, 
+      color: COLORS.textDark, 
+      fontWeight: 'bold' 
+  }, 
+  tableCellSub: { 
+      fontSize: 11, 
+      color: COLORS.textLight 
+  },
+  tableCell: { 
+      fontSize: 12, 
+      color: COLORS.textMedium, 
+      flex: 1, 
+      textAlign: 'center' 
+  },
+  changeStatusBtn: { 
+      flex: 1.5, 
+      backgroundColor: COLORS.primaryLight, 
+      paddingVertical: 6, 
+      borderRadius: 15, 
+      alignItems: 'center' 
+  },
+  changeStatusBtnText: { 
+      color: COLORS.primary, 
+      fontWeight: 'bold', 
+      fontSize: 11 
+  },
+  footer: { 
+      paddingTop: 16, 
+      borderTopWidth: 1, 
+      borderTopColor: COLORS.borderLight, 
+      alignItems: 'flex-end' 
+  },
+  grandTotalLabel: {
+      fontSize: 14,
+      color: COLORS.textLight
+  },
+  grandTotal: { 
+      fontSize: 20, 
+      fontWeight: 'bold', 
+      color: COLORS.textDark,
+      marginTop: 4
+  },
+  statusButtonContainer: { 
+      paddingVertical: 8 
+  },
+  statusButton: { 
+      borderRadius: 8, 
+      paddingVertical: 14, 
+      marginBottom: 10, 
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8
+  },
+  statusButtonText: { 
+      color: COLORS.white, 
+      fontSize: 16, 
+      fontWeight: 'bold' 
+  },
+  productInfoContainer: {
+      backgroundColor: COLORS.background,
+      borderRadius: 8,
+      padding: 16,
+      marginVertical: 12
+  },
+  productNameTitle: { 
+      fontSize: 16, 
+      fontWeight: '600', 
+      textAlign: 'center', 
+      color: COLORS.textDark 
+  },
+  insufficientStockRow: { 
+      backgroundColor: COLORS.dangerLight 
+  },
+  insufficientStockText: { 
+      color: COLORS.danger, 
+      fontSize: 11, 
+      fontWeight: 'bold' 
+  },
+  pickerLabel: {
+      fontSize: 16,
+      color: COLORS.textMedium,
+      marginBottom: 8,
+      marginTop: 16,
+  }
 });
