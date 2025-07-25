@@ -11,7 +11,8 @@ import {
   Alert, 
   Modal,
   Dimensions,
-  RefreshControl 
+  RefreshControl,
+  FlatList 
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -30,7 +31,7 @@ const COLORS = {
   primaryLight: '#E8F0FE',
   primaryDark: '#005382',
   secondary: '#8E44AD',
-  info: '#3498DB', // New color for 'Out for Delivery'
+  info: '#3498DB',
   danger: '#E53935',
   dangerLight: '#FFF1F0',
   warning: '#F39C12',
@@ -46,7 +47,119 @@ const COLORS = {
 };
 
 // =================================================================
-// VIEW DETAILS MODAL COMPONENT (No Changes)
+// INSUFFICIENT ORDERS MODAL COMPONENT
+// =================================================================
+const InsufficientOrdersModal = ({ visible, onClose, data }) => {
+  const renderHeader = () => (
+    <View style={modalStyles.summaryTableHeader}>
+      <Text style={[modalStyles.summaryTableHeaderCell, { flex: 2.5 }]}>Product</Text>
+      <Text style={[modalStyles.summaryTableHeaderCell, { flex: 2 }]}>Employee</Text>
+      <Text style={[modalStyles.summaryTableHeaderCell, { flex: 1.2, textAlign: 'center' }]}>Avail</Text>
+      <Text style={[modalStyles.summaryTableHeaderCell, { flex: 1.2, textAlign: 'center' }]}>Ordered</Text>
+    </View>
+  );
+
+  const renderItem = ({ item }) => (
+    <View style={modalStyles.summaryTableRow}>
+      <View style={{ flex: 2.5, paddingRight: 4 }}>
+        <Text style={modalStyles.summaryTableCell} numberOfLines={1}>{item.generic_name}</Text>
+        <Text style={modalStyles.summaryTableCellSub} numberOfLines={1}>{item.brand_name}</Text>
+      </View>
+      <View style={{ flex: 2, paddingRight: 4 }}>
+        <Text style={modalStyles.summaryTableCell} numberOfLines={1}>{item.employee}</Text>
+        <Text style={modalStyles.summaryTableCellSub} numberOfLines={1}>
+          {new Date(item.date_ordered).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        </Text>
+      </View>
+      <Text style={[modalStyles.summaryTableCell, { flex: 1.2, color: COLORS.danger, fontWeight: 'bold', textAlign: 'center' }]}>
+        {item.available === 'expired' ? 'Expired' : item.available}
+      </Text>
+      <Text style={[modalStyles.summaryTableCell, { flex: 1.2, fontWeight: 'bold', textAlign: 'center' }]}>
+        {item.ordered}
+      </Text>
+    </View>
+  );
+
+  return (
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+      <View style={modalStyles.overlay}>
+        <View style={[modalStyles.modalContainer, { width: width * 0.9 }]}>
+          <View style={modalStyles.header}>
+            <Text style={modalStyles.headerTitle}>Orders That Cannot Be Fulfilled</Text>
+            <TouchableOpacity onPress={onClose}>
+              <MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} />
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={data}
+            renderItem={renderItem}
+            keyExtractor={(item, index) => index.toString()}
+            ListHeaderComponent={renderHeader}
+            stickyHeaderIndices={[0]}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <MaterialCommunityIcons name="check-circle-outline" size={48} color={COLORS.success} />
+                <Text style={styles.emptyStateText}>All orders can be fulfilled</Text>
+              </View>
+            }
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// =================================================================
+// INSUFFICIENT PRODUCTS MODAL COMPONENT
+// =================================================================
+const InsufficientProductsModal = ({ visible, onClose, data }) => {
+  const renderItem = ({ item }) => (
+    <View style={modalStyles.insufficientItem}>
+      <Text style={modalStyles.insufficientProductName}>
+        {item.product.split('|')[0]} ({item.product.split('|')[1]})
+      </Text>
+      <View style={modalStyles.insufficientDetails}>
+        <Text style={modalStyles.insufficientDetail}>
+          Available: {item.available === 'expired' ? 'Expired' : item.available}
+        </Text>
+        <Text style={modalStyles.insufficientDetail}>
+          Total Ordered: {item.ordered}
+        </Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+      <View style={modalStyles.overlay}>
+        <View style={[modalStyles.modalContainer, { width: width * 0.9 }]}>
+          <View style={modalStyles.header}>
+            <Text style={modalStyles.headerTitle}>Insufficient Products</Text>
+            <TouchableOpacity onPress={onClose}>
+              <MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} />
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={data}
+            renderItem={renderItem}
+            keyExtractor={(item, index) => index.toString()}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <MaterialCommunityIcons name="check-circle-outline" size={48} color={COLORS.success} />
+                <Text style={styles.emptyStateText}>All products have sufficient stock</Text>
+              </View>
+            }
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// =================================================================
+// VIEW DETAILS MODAL COMPONENT
 // =================================================================
 const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }) => {
     if (!orderData) return null;
@@ -54,7 +167,6 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
     const { employeeInfo, orderGroup } = orderData;
     const [name, date] = employeeInfo.split('|');
 
-    // Filter orders to show only those not delivered or cancelled
     const activeOrders = Object.values(orderGroup || {}).filter(o => o && o.status !== 'delivered' && o.status !== 'cancelled');
 
     const grandTotal = activeOrders.reduce((sum, order) => {
@@ -183,7 +295,7 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
 };
 
 // =================================================================
-// CHANGE STATUS MODAL COMPONENT (Modified)
+// CHANGE STATUS MODAL COMPONENT
 // =================================================================
 const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
   return (
@@ -206,7 +318,6 @@ const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
                 </View>
 
                 <View style={modalStyles.statusButtonContainer}>
-                    {/* Pending Button */}
                     <TouchableOpacity 
                         style={[modalStyles.statusButton, {backgroundColor: COLORS.warning}]} 
                         onPress={() => onSubmit('pending')}
@@ -215,7 +326,6 @@ const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
                         <Text style={modalStyles.statusButtonText}>PENDING</Text>
                     </TouchableOpacity>
                     
-                    {/* Out for Delivery Button (NEW) */}
                     <TouchableOpacity 
                         style={[modalStyles.statusButton, {backgroundColor: COLORS.info}]} 
                         onPress={() => onSubmit('out for delivery')}
@@ -224,7 +334,6 @@ const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
                         <Text style={modalStyles.statusButtonText}>OUT FOR DELIVERY</Text>
                     </TouchableOpacity>
                     
-                    {/* Delivered Button */}
                     <TouchableOpacity 
                         style={[modalStyles.statusButton, {backgroundColor: COLORS.primary}]} 
                         onPress={() => onSubmit('delivered')}
@@ -233,7 +342,6 @@ const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
                         <Text style={modalStyles.statusButtonText}>DELIVERED</Text>
                     </TouchableOpacity>
                     
-                    {/* Cancelled Button */}
                     <TouchableOpacity 
                         style={[modalStyles.statusButton, {backgroundColor: COLORS.danger}]} 
                         onPress={() => onSubmit('cancelled')}
@@ -248,9 +356,8 @@ const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
   );
 };
 
-
 // =================================================================
-// ASSIGN STAFF MODAL COMPONENT (NEW)
+// ASSIGN STAFF MODAL COMPONENT
 // =================================================================
 const AssignStaffModal = ({ visible, onClose, onSubmit, orderId }) => {
     const [staffList, setStaffList] = useState([]);
@@ -264,7 +371,6 @@ const AssignStaffModal = ({ visible, onClose, onSubmit, orderId }) => {
                 try {
                     const response = await api.get(`/mobile/staff/orders/${orderId}/available-staff`);
                     setStaffList(response.data);
-                    // Automatically select the first staff member if list is not empty
                     if (response.data.length > 0) {
                         setSelectedStaffId(response.data[0].id);
                     }
@@ -335,9 +441,8 @@ const AssignStaffModal = ({ visible, onClose, onSubmit, orderId }) => {
     );
 };
 
-
 // =================================================================
-// SCANNER SCREEN COMPONENT (No Changes)
+// SCANNER SCREEN COMPONENT
 // =================================================================
 export function ScannerScreen() {
   const navigation = useNavigation();
@@ -522,7 +627,7 @@ export function ScannerScreen() {
 }
 
 // =================================================================
-// ORDERS SCREEN COMPONENT (Modified)
+// ORDERS SCREEN COMPONENT
 // =================================================================
 export default function OrdersScreen() {
     const navigation = useNavigation();
@@ -536,9 +641,12 @@ export default function OrdersScreen() {
     const [isViewModalVisible, setViewModalVisible] = useState(false);
     const [isStatusModalVisible, setStatusModalVisible] = useState(false);
     const [isAssignStaffModalVisible, setAssignStaffModalVisible] = useState(false);
+    const [isInsufficientOrdersModalVisible, setInsufficientOrdersModalVisible] = useState(false);
+    const [isInsufficientProductsModalVisible, setInsufficientProductsModalVisible] = useState(false);
     
     const [selectedGroupData, setSelectedGroupData] = useState(null);
     const [selectedProduct, setSelectedProduct] = useState(null);
+    const [modalData, setModalData] = useState([]);
 
     const fetchOrders = async () => { 
         try { 
@@ -579,14 +687,25 @@ export default function OrdersScreen() {
         setViewModalVisible(false); 
         setStatusModalVisible(false); 
         setAssignStaffModalVisible(false);
+        setInsufficientOrdersModalVisible(false);
+        setInsufficientProductsModalVisible(false);
         setSelectedGroupData(null); 
         setSelectedProduct(null); 
+    };
+
+    const showInsufficientOrdersModal = (data) => {
+        setModalData(data || []);
+        setInsufficientOrdersModalVisible(true);
+    };
+
+    const showInsufficientProductsModal = (data) => {
+        setModalData(data || []);
+        setInsufficientProductsModalVisible(true);
     };
 
     const handleStatusSubmit = async (status, staffId = null) => {
         if (!selectedProduct) return;
 
-        // If 'out for delivery' is selected, open the staff assignment modal instead of submitting directly
         if (status === 'out for delivery' && !staffId) {
             setStatusModalVisible(false);
             setAssignStaffModalVisible(true);
@@ -610,7 +729,7 @@ export default function OrdersScreen() {
             );
             
             handleCloseModals();
-            fetchOrders(); // Refresh all data after an update
+            fetchOrders();
 
         } catch (error) {
             Alert.alert(
@@ -621,7 +740,6 @@ export default function OrdersScreen() {
     };
 
     const handleAssignStaffSubmit = (staffId) => {
-        // Now call the original submit handler with the status and the selected staff ID
         handleStatusSubmit('out for delivery', staffId);
     };
 
@@ -631,11 +749,121 @@ export default function OrdersScreen() {
     )];
     
     const summaryData = data.summary ? [
-        { title: 'Orders This Week', count: data.summary.ordersThisWeek, icon: 'chart-line', color: COLORS.primary },
-        { title: 'Pending Orders', count: data.summary.pendingOrders, icon: 'clock-outline', color: COLORS.warning },
-        { title: 'Cannot Fulfill', count: data.summary.insufficientOrders, icon: 'alert-circle-outline', color: COLORS.danger, isAlert: true },
-        { title: 'Low Stock Items', count: data.summary.insufficientProducts, icon: 'package-variant-closed-minus', color: COLORS.danger, isAlert: true },
+        { 
+            title: 'Orders This Week', 
+            count: data.summary.ordersThisWeek, 
+            icon: 'chart-line', 
+            color: COLORS.primary 
+        },
+        { 
+            title: 'Pending Orders', 
+            count: data.summary.pendingOrders, 
+            icon: 'clock-outline', 
+            color: COLORS.warning 
+        },
+        { 
+            title: 'Cannot Fulfill', 
+            count: data.summary.insufficientOrders, 
+            icon: 'alert-circle-outline', 
+            color: COLORS.danger, 
+            isAlert: true,
+            onPress: () => showInsufficientOrdersModal(data.summary.insufficientOrderLines)
+        },
+        { 
+            title: 'Insufficient Products', 
+            count: data.summary.insufficientProducts, 
+            icon: 'package-variant-closed-minus', 
+            color: COLORS.danger, 
+            isAlert: true,
+            onPress: () => showInsufficientProductsModal(data.summary.insufficientSummary)
+        },
     ] : [];
+
+    const SummaryCard = ({ title, count, icon, color, isAlert, onPress }) => (
+        <TouchableOpacity 
+            onPress={onPress}
+            style={[
+                styles.summaryCard, 
+                isAlert && styles.alertCard,
+                { borderLeftColor: color }
+            ]}
+        >
+            <View>
+                <Text style={[
+                    styles.summaryCount, 
+                    isAlert && styles.alertText
+                ]}>
+                    {count}
+                </Text>
+                <Text style={[
+                    styles.summaryTitle, 
+                    isAlert && styles.alertText
+                ]}>
+                    {title}
+                </Text>
+            </View>
+            <MaterialCommunityIcons 
+                name={icon} 
+                size={28} 
+                color={isAlert ? COLORS.white : color} 
+            />
+        </TouchableOpacity>
+    );
+
+    const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
+        const [name, date] = employeeInfo.split('|');
+
+        // MODIFICATION: The badge now only counts orders where stock is 'expired'
+        const insufficientCount = Object.values(orderGroup || {}).reduce((count, order) => {
+            if (!order || typeof order !== 'object') return count;
+            
+            if (order.available_stock === 'expired') {
+                return count + 1;
+            }
+            return count;
+        }, 0);
+
+        return (
+            <View style={styles.orderItem}>
+                <View style={styles.orderInfo}>
+                    <MaterialCommunityIcons 
+                        name="account-circle" 
+                        size={24} 
+                        color={COLORS.textLight} 
+                    />
+                    <View style={styles.orderTextContainer}>
+                        <Text style={styles.orderEmployee}>{name}</Text>
+                        <Text style={styles.orderDate}>
+                            {new Date(date).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                            })}
+                        </Text>
+                    </View>
+                </View>
+                
+                <View style={styles.orderActions}>
+                    {insufficientCount > 0 && (
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>{insufficientCount}</Text>
+                        </View>
+                    )}
+                    <TouchableOpacity 
+                        style={styles.viewButton} 
+                        onPress={onView}
+                    >
+                        <Text style={styles.viewButtonText}>View</Text>
+                        <MaterialCommunityIcons 
+                            name="chevron-right" 
+                            size={20} 
+                            color={COLORS.primary} 
+                        />
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+    };
 
     return (
         <SafeAreaView style={styles.container}>
@@ -658,6 +886,18 @@ export default function OrdersScreen() {
                 onClose={handleCloseModals}
                 onSubmit={handleAssignStaffSubmit}
                 orderId={selectedProduct?.id}
+            />
+
+            <InsufficientOrdersModal
+                visible={isInsufficientOrdersModalVisible}
+                onClose={handleCloseModals}
+                data={modalData}
+            />
+
+            <InsufficientProductsModal
+                visible={isInsufficientProductsModalVisible}
+                onClose={handleCloseModals}
+                data={modalData}
             />
             
             <ScrollView 
@@ -687,7 +927,17 @@ export default function OrdersScreen() {
                         <Text style={styles.screenTitle}>Order Management</Text>
                         
                         <View style={styles.summaryGrid}>
-                            {summaryData.map((item, i) => <SummaryCard key={i} {...item} />)}
+                            {summaryData.map((item, i) => (
+                                <SummaryCard 
+                                    key={i} 
+                                    title={item.title} 
+                                    count={item.count} 
+                                    icon={item.icon} 
+                                    color={item.color} 
+                                    isAlert={item.isAlert} 
+                                    onPress={item.onPress}
+                                />
+                            ))}
                         </View>
                         
                         <View style={styles.filterSection}>
@@ -771,97 +1021,9 @@ export default function OrdersScreen() {
 }
 
 // =================================================================
-// SUB-COMPONENTS (No Changes)
-// =================================================================
-const SummaryCard = ({ title, count, icon, color, isAlert }) => (
-    <View style={[
-        styles.summaryCard, 
-        isAlert && styles.alertCard,
-        { borderLeftColor: color }
-    ]}>
-        <View>
-            <Text style={[
-                styles.summaryCount, 
-                isAlert && styles.alertText
-            ]}>
-                {count}
-            </Text>
-            <Text style={[
-                styles.summaryTitle, 
-                isAlert && styles.alertText
-            ]}>
-                {title}
-            </Text>
-        </View>
-        <MaterialCommunityIcons 
-            name={icon} 
-            size={28} 
-            color={isAlert ? COLORS.white : color} 
-        />
-    </View>
-);
-
-const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
-    const [name, date] = employeeInfo.split('|');
-
-    const insufficientCount = Object.values(orderGroup || {}).reduce((count, order) => {
-        if (!order || typeof order !== 'object') return count;
-        const available = order.available_stock;
-        const needed = order.quantity;
-        if (available === 'expired' || (typeof available === 'number' && available < needed)) {
-            return count + 1;
-        }
-        return count;
-    }, 0);
-
-    return (
-        <View style={styles.orderItem}>
-            <View style={styles.orderInfo}>
-                <MaterialCommunityIcons 
-                    name="account-circle" 
-                    size={24} 
-                    color={COLORS.textLight} 
-                />
-                <View style={styles.orderTextContainer}>
-                    <Text style={styles.orderEmployee}>{name}</Text>
-                    <Text style={styles.orderDate}>
-                        {new Date(date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                        })}
-                    </Text>
-                </View>
-            </View>
-            
-            <View style={styles.orderActions}>
-                {insufficientCount > 0 && (
-                    <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{insufficientCount}</Text>
-                    </View>
-                )}
-                <TouchableOpacity 
-                    style={styles.viewButton} 
-                    onPress={onView}
-                >
-                    <Text style={styles.viewButtonText}>View</Text>
-                    <MaterialCommunityIcons 
-                        name="chevron-right" 
-                        size={20} 
-                        color={COLORS.primary} 
-                    />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-};
-
-
-// =================================================================
 // STYLESHEETS
 // =================================================================
 const styles = StyleSheet.create({
-  // Base Container
   container: { 
       flex: 1, 
       backgroundColor: COLORS.background 
@@ -873,16 +1035,12 @@ const styles = StyleSheet.create({
   loader: {
       marginTop: 40
   },
-  
-  // Screen Title
   screenTitle: {
       fontSize: 24,
       fontWeight: 'bold',
       color: COLORS.textDark,
       marginBottom: 16
   },
-  
-  // Summary Cards
   summaryGrid: { 
       flexDirection: 'row', 
       flexWrap: 'wrap', 
@@ -921,8 +1079,6 @@ const styles = StyleSheet.create({
   alertText: { 
       color: COLORS.white 
   },
-  
-  // Filter Section
   filterSection: {
       backgroundColor: COLORS.white,
       borderRadius: 8,
@@ -954,8 +1110,6 @@ const styles = StyleSheet.create({
       width: '100%',
       color: COLORS.textDark
   },
-  
-  // Action Bar
   actionBar: {
       marginBottom: 16
   },
@@ -966,8 +1120,6 @@ const styles = StyleSheet.create({
       gap: 8,
       paddingVertical: 12
   },
-  
-  // Province/Company Sections
   provinceSection: { 
       backgroundColor: COLORS.white, 
       borderRadius: 8, 
@@ -998,8 +1150,6 @@ const styles = StyleSheet.create({
       color: COLORS.textMedium, 
       marginBottom: 8 
   },
-  
-  // Order Items
   orderItem: { 
       flexDirection: 'row', 
       justifyContent: 'space-between', 
@@ -1054,8 +1204,6 @@ const styles = StyleSheet.create({
       fontWeight: '600',
       marginRight: 4
   },
-  
-  // Buttons
   button: { 
       flexDirection: 'row', 
       alignItems: 'center', 
@@ -1086,8 +1234,6 @@ const styles = StyleSheet.create({
   disabledButton: { 
       backgroundColor: COLORS.primaryLight 
   },
-  
-  // Error State
   errorContainer: {
       alignItems: 'center',
       padding: 20,
@@ -1099,8 +1245,6 @@ const styles = StyleSheet.create({
       marginVertical: 16, 
       fontSize: 16 
   },
-  
-  // Empty State
   emptyState: {
       alignItems: 'center',
       padding: 40,
@@ -1118,8 +1262,6 @@ const styles = StyleSheet.create({
       marginTop: 4,
       textAlign: 'center'
   },
-  
-  // Scanner Screen Styles
   scannerContainer: { 
       flex: 1, 
       backgroundColor: COLORS.white 
@@ -1139,8 +1281,6 @@ const styles = StyleSheet.create({
       fontSize: 16,
       color: COLORS.textMedium
   },
-  
-  // Scanner Overlay
   scannerOverlay: {
       flex: 1,
       justifyContent: 'center',
@@ -1192,8 +1332,6 @@ const styles = StyleSheet.create({
       padding: 8,
       borderRadius: 4
   },
-  
-  // Signature Screen
   signatureContainer: { 
       flex: 1, 
       padding: 20, 
@@ -1262,28 +1400,6 @@ const modalStyles = StyleSheet.create({
   },
   contentScrollView: { 
       marginVertical: 12 
-  },
-  sectionHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 8
-  },
-  sectionTitle: { 
-      fontSize: 15, 
-      fontWeight: 'bold', 
-      color: COLORS.textDark 
-  },
-  sectionIndicator: {
-      backgroundColor: COLORS.primaryLight,
-      borderRadius: 12,
-      paddingHorizontal: 8,
-      paddingVertical: 4
-  },
-  sectionIndicatorText: {
-      fontSize: 12,
-      color: COLORS.primary,
-      fontWeight: '500'
   },
   table: { 
       borderRadius: 6,
@@ -1383,5 +1499,57 @@ const modalStyles = StyleSheet.create({
       color: COLORS.textMedium,
       marginBottom: 8,
       marginTop: 16,
-  }
+  },
+  insufficientItem: {
+      padding: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.borderLight
+  },
+  insufficientProductName: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: COLORS.textDark,
+      marginBottom: 4
+  },
+  insufficientDetails: {
+      flexDirection: 'row',
+      justifyContent: 'space-between'
+  },
+  insufficientDetail: {
+      fontSize: 14,
+      color: COLORS.textMedium
+  },
+  // New styles for the redesigned 'Orders That Cannot Be Fulfilled' modal table
+  summaryTableHeader: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1.5,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  summaryTableHeaderCell: {
+    fontSize: 11,
+    color: COLORS.textLight,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  summaryTableRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    alignItems: 'center',
+  },
+  summaryTableCell: {
+    fontSize: 13,
+    color: COLORS.textMedium,
+    fontWeight: '500',
+  },
+  summaryTableCellSub: {
+    fontSize: 11,
+    color: COLORS.textLighter,
+    marginTop: 2,
+  },
 });
