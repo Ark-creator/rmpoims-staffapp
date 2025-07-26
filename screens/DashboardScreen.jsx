@@ -8,8 +8,8 @@ import {
   Dimensions,
   ScrollView,
   ActivityIndicator,
-  FlatList, // Add FlatList
-  RefreshControl, // Add RefreshControl
+  FlatList,
+  RefreshControl,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import api from '../utils/api';
@@ -21,10 +21,11 @@ const cardWidth = (screenWidth - (cardPadding * 2) - cardGap) / 2;
 
 // --- COLOR CONSTANTS ---
 const COLORS = {
-  primary: '#3498DB',
-  warning: '#F39C12',
-  danger: '#E74C3C',
-  success: '#1ABC9C',
+  primary: '#3498DB',    // Blue for Packed
+  secondary: '#2980B9', // Darker Blue for Out for Delivery
+  warning: '#F39C12',   // Orange for Pending
+  danger: '#E74C3C',    // Red for Cancelled
+  success: '#27AE60',   // Green for Delivered
   textDark: '#2C3E50',
   textLight: '#7F8C8D',
   background: '#F4F6F8',
@@ -33,9 +34,12 @@ const COLORS = {
   shadow: '#B0BEC5'
 };
 
+// Map status to its corresponding color for the badge
 const STATUS_COLORS = {
   delivered: COLORS.success,
   pending: COLORS.warning,
+  packed: COLORS.primary,
+  'out for delivery': COLORS.secondary,
   cancelled: COLORS.danger,
 };
 
@@ -45,22 +49,22 @@ const STATUS_COLORS = {
 const InfoCard = ({ item, onPress }) => (
   <TouchableOpacity style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.color }]} activeOpacity={0.8} onPress={onPress}>
     <View style={styles.cardContent}>
-      <Text style={styles.cardNumber}>{item.value}</Text>
+      <Text style={styles.cardNumber}>{item.value ?? 0}</Text>
       <Text style={styles.cardLabel}>{item.label}</Text>
     </View>
     <MaterialCommunityIcons name={item.icon} size={32} color={item.color} style={styles.cardIcon} />
   </TouchableOpacity>
 );
 
-// Order Item component (for Order List)
+// Order Item component (for Order List) - handles both data structures
 const OrderItem = React.memo(({ item }) => (
     <View style={styles.orderCard}>
         <View>
-            <Text style={styles.orderId}>Order #{item.id}</Text>
-            <Text style={styles.customerName}>Customer: {item.user?.name ?? 'N/A'}</Text>
-            <Text style={styles.orderDate}>Date: {new Date(item.created_at).toLocaleDateString()}</Text>
+            <Text style={styles.orderId}>Order #{item.id ?? item.order_id}</Text>
+            <Text style={styles.customerName}>Customer: {item.user?.name ?? item.employee ?? 'N/A'}</Text>
+            <Text style={styles.orderDate}>Date: {new Date(item.created_at ?? item.date_ordered).toLocaleDateString()}</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] }]}>
+        <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] || COLORS.textLight }]}>
             <Text style={styles.statusText}>{item.status}</Text>
         </View>
     </View>
@@ -70,16 +74,11 @@ const OrderItem = React.memo(({ item }) => (
 // --- MAIN DASHBOARD SCREEN COMPONENT ---
 
 export default function DashboardScreen() {
-  // State for view management
   const [view, setView] = useState('dashboard'); // 'dashboard' or 'list'
   const [selectedStatus, setSelectedStatus] = useState(null);
-
-  // State for dashboard stats
   const [stats, setStats] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState('');
-
-  // State for order list
   const [orders, setOrders] = useState([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState('');
@@ -87,17 +86,17 @@ export default function DashboardScreen() {
   const [page, setPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(true);
 
-  // --- DATA FETCHING ---
-
   // Fetch stats for the dashboard
   const fetchDashboardStats = async () => {
     setDashboardLoading(true);
     setDashboardError('');
     try {
       const response = await api.get('/mobile/staff/dashboard-stats');
+      console.log('API Response Data:', response.data); // Log success data
       setStats(response.data);
     } catch (err) {
-      console.error("Failed to fetch dashboard stats:", err);
+      // Log the detailed error from the server for debugging
+      console.error('API Error fetching stats:', err.response?.data || err.message); 
       setDashboardError('Cannot connect to server. Check your network.');
     } finally {
       setDashboardLoading(false);
@@ -112,7 +111,8 @@ export default function DashboardScreen() {
     if (isRefresh) setRefreshing(true);
 
     try {
-      const response = await api.get(`/mobile/staff/orders/${status}?page=${pageNum}`);
+      // Correctly encode the status for the URL, especially for "out for delivery"
+      const response = await api.get(`/mobile/staff/orders/${encodeURIComponent(status)}?page=${pageNum}`);
       const newOrders = response.data.data;
       
       setOrders(prev => (pageNum === 1 ? newOrders : [...prev, ...newOrders]));
@@ -120,15 +120,13 @@ export default function DashboardScreen() {
       setHasNextPage(!!response.data.next_page_url);
       setListError('');
     } catch (err) {
-      console.error(`Failed to fetch ${status} orders:`, err);
+      console.error(`API Error fetching ${status} orders:`, err.response?.data || err.message);
       setListError('Could not load orders. Please try again.');
     } finally {
       setListLoading(false);
       if(isRefresh) setRefreshing(false);
     }
   }, [listLoading, hasNextPage]);
-
-  // --- EFFECTS ---
 
   // Fetch dashboard stats on initial load
   useEffect(() => {
@@ -138,7 +136,6 @@ export default function DashboardScreen() {
   // Fetch orders when view changes to 'list'
   useEffect(() => {
     if (view === 'list' && selectedStatus) {
-      // Reset previous list data before fetching new ones
       setOrders([]);
       setPage(1);
       setHasNextPage(true);
@@ -150,42 +147,47 @@ export default function DashboardScreen() {
   // --- HANDLERS ---
   const handleCardPress = (status) => {
     setSelectedStatus(status);
-    setView('list'); // Switch to the order list view
+    setView('list'); 
   };
 
   const handleBackToDashboard = () => {
-    setView('dashboard'); // Switch back to dashboard view
+    setView('dashboard'); 
     setSelectedStatus(null);
-    setOrders([]); // Clear orders list
+    setOrders([]); 
   };
 
   const handleRefresh = () => {
-    if (selectedStatus) {
+    if (view === 'dashboard') {
+        fetchDashboardStats();
+    } else if (selectedStatus) {
       fetchOrders(selectedStatus, 1, true);
     }
   };
 
   const loadMoreOrders = () => {
-    if (selectedStatus) {
+    if (selectedStatus && hasNextPage && !listLoading) {
       fetchOrders(selectedStatus, page + 1);
     }
   };
 
   // --- RENDER FUNCTIONS ---
 
-  // Renders the main dashboard with info cards
   const renderDashboardView = () => {
     const cardData = stats ? [
-      { value: stats.totalDelivered, label: 'Delivered Orders', icon: 'truck-delivery-outline', color: COLORS.primary, status: 'delivered' },
-      { value: stats.pendingOrders, label: 'Pending Orders', icon: 'clock-outline', color: COLORS.warning, status: 'pending' },
-      { value: stats.cancelled, label: 'Cancelled Orders', icon: 'close-circle-outline', color: COLORS.danger, status: 'cancelled' },
-    ] : [];
+        { value: stats.deliveredOrders, label: 'Delivered Orders', icon: 'check-circle-outline', color: COLORS.success, status: 'delivered' },
+        { value: stats.pendingOrders, label: 'Pending Orders', icon: 'clock-outline', color: COLORS.warning, status: 'pending' },
+        { value: stats.packedOrders, label: 'Packed Orders', icon: 'package-variant-closed', color: COLORS.primary, status: 'packed' },
+        { value: stats.outForDeliveryOrders, label: 'Out for Delivery', icon: 'truck-fast-outline', color: COLORS.secondary, status: 'out for delivery' },
+        { value: stats.cancelledOrders, label: 'Cancelled Orders', icon: 'close-circle-outline', color: COLORS.danger, status: 'cancelled' },
+      ] : [];
+
+    const displayCards = cardData.filter(item => item.status);
 
     return (
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={dashboardLoading} onRefresh={fetchDashboardStats} />}
+        refreshControl={<RefreshControl refreshing={dashboardLoading} onRefresh={handleRefresh} />}
       >
         <Text style={styles.screenTitle}>Dashboard Overview</Text>
         {dashboardLoading && !stats ? (
@@ -199,7 +201,7 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <View style={styles.gridContainer}>
-            {cardData.map((item) => (
+            {displayCards.map((item) => (
               <InfoCard key={item.status} item={item} onPress={() => handleCardPress(item.status)} />
             ))}
           </View>
@@ -208,7 +210,6 @@ export default function DashboardScreen() {
     );
   };
 
-  // Renders the list of orders
   const renderOrderListView = () => {
     const renderFooter = () => {
       if (!listLoading || refreshing) return null;
@@ -229,13 +230,14 @@ export default function DashboardScreen() {
                 <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         ) : (orders.length === 0) ? (
-            <View style={styles.centerContainer}>
-              <Text style={styles.infoText}>{listError || `No ${selectedStatus} orders found.`}</Text>
-            </View>
+            <ScrollView contentContainerStyle={styles.centerContainer} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} />}>
+               <Text style={styles.infoText}>{listError || `No ${selectedStatus} orders found.`}</Text>
+            </ScrollView>
         ) : (
             <FlatList
                 data={orders}
                 renderItem={({ item }) => <OrderItem item={item} />}
+                // Use the unique primary key 'id' which is now always available
                 keyExtractor={item => item.id.toString()}
                 contentContainerStyle={styles.listContainer}
                 onEndReached={loadMoreOrders}
@@ -248,7 +250,6 @@ export default function DashboardScreen() {
     );
   };
 
-  // --- MAIN RETURN ---
   return (
     <SafeAreaView style={styles.container}>
       {view === 'dashboard' ? renderDashboardView() : renderOrderListView()}
@@ -263,30 +264,13 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   infoText: { color: COLORS.textLight, fontSize: 16, textAlign: 'center' },
   loader: { marginTop: 40 },
-  
-  // Header for Order List
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: COLORS.white,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    marginRight: 16,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.textDark,
-  },
-
-  // Dashboard View Styles
+  header: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  backButton: { marginRight: 16 },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, textTransform: 'capitalize' },
   scrollContainer: { padding: cardPadding, paddingBottom: 20 },
   screenTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 24, marginTop: 8 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 8 },
-  card: { width: cardWidth, backgroundColor: COLORS.white, borderRadius: 12, padding: 20, marginBottom: cardGap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  card: { width: cardWidth, backgroundColor: COLORS.white, borderRadius: 12, padding: 16, marginBottom: cardGap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 3 },
   cardContent: { flex: 1 },
   cardNumber: { fontSize: 26, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 4 },
   cardLabel: { fontSize: 14, color: COLORS.textLight, fontWeight: '500' },
@@ -295,8 +279,6 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.danger, textAlign: 'center', marginVertical: 12, fontSize: 16, lineHeight: 24 },
   retryButton: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginTop: 12 },
   retryButtonText: { color: COLORS.white, fontWeight: 'bold', fontSize: 16 },
-
-  // Order List View Styles
   listContainer: { padding: 16 },
   orderCard: { backgroundColor: COLORS.white, borderRadius: 8, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#999', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
   orderId: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },

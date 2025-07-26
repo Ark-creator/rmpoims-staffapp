@@ -325,6 +325,14 @@ const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
                         <MaterialCommunityIcons name="clock-outline" size={20} color={COLORS.white} />
                         <Text style={modalStyles.statusButtonText}>PENDING</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity 
+                        style={[modalStyles.statusButton, {backgroundColor: COLORS.primary}]} 
+                        onPress={() => onSubmit('packed')}
+                    >
+                        <MaterialCommunityIcons name="package-variant-closed" size={20} color={COLORS.white} />
+                        <Text style={modalStyles.statusButtonText}>PACKED</Text>
+                    </TouchableOpacity>
                     
                     <TouchableOpacity 
                         style={[modalStyles.statusButton, {backgroundColor: COLORS.info}]} 
@@ -335,7 +343,7 @@ const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
                     </TouchableOpacity>
                     
                     <TouchableOpacity 
-                        style={[modalStyles.statusButton, {backgroundColor: COLORS.primary}]} 
+                        style={[modalStyles.statusButton, {backgroundColor: COLORS.success}]} 
                         onPress={() => onSubmit('delivered')}
                     >
                         <MaterialCommunityIcons name="package-variant-closed-check" size={20} color={COLORS.white} />
@@ -812,17 +820,23 @@ export default function OrdersScreen() {
 
     const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
         const [name, date] = employeeInfo.split('|');
-
-        // MODIFICATION: The badge now only counts orders where stock is 'expired'
+    
+        // MODIFIED LOGIC:
+        // Count expired or LOW stock items, but NOT 'out of stock' (available: 0)
+        // to match the summary card logic.
         const insufficientCount = Object.values(orderGroup || {}).reduce((count, order) => {
             if (!order || typeof order !== 'object') return count;
-            
-            if (order.available_stock === 'expired') {
+    
+            const isInsufficient = order.available_stock === 'expired' ||
+                (typeof order.available_stock === 'number' && order.quantity && order.available_stock < order.quantity);
+    
+            // Only count if it's insufficient AND the stock is not exactly 0.
+            if (isInsufficient && order.available_stock !== 0) {
                 return count + 1;
             }
             return count;
         }, 0);
-
+    
         return (
             <View style={styles.orderItem}>
                 <View style={styles.orderInfo}>
@@ -1519,7 +1533,6 @@ const modalStyles = StyleSheet.create({
       fontSize: 14,
       color: COLORS.textMedium
   },
-  // New styles for the redesigned 'Orders That Cannot Be Fulfilled' modal table
   summaryTableHeader: {
     flexDirection: 'row',
     paddingVertical: 10,
