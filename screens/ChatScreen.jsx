@@ -85,21 +85,27 @@ export default function ChatScreen() {
     return () => clearInterval(intervalId);
   }, [selectedUser, chatMode]);
 
-  const fetchContacts = async () => {
+ const fetchContacts = async () => {
     try {
       setLoadingContacts(true);
       const response = await api.get('/mobile/staff/chat/conversations');
       const contacts = response.data;
 
-      const sections = { Customers: [], Administrators: [] };
+      // 1. Initialize sections for all three user types
+      const sections = { Customers: [], Admins: [], 'Super Admins': [] };
+
+      // 2. Loop through contacts and sort them into the correct sections
       contacts.forEach(contact => {
         if (contact.type === 'customer') {
           sections.Customers.push(contact);
-        } else {
-          sections.Administrators.push(contact);
+        } else if (contact.type === 'admin') {
+          sections.Admins.push(contact);
+        } else if (contact.type === 'super_admin') {
+          sections['Super Admins'].push(contact);
         }
       });
 
+      // This part remains the same, it correctly formats the sections object
       const formattedSections = Object.keys(sections)
         .map(title => ({ title, data: sections[title] }))
         .filter(section => section.data.length > 0);
