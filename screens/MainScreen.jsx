@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Alert, TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
@@ -50,8 +50,28 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
 
 export default function MainScreen() {
   const navigation = useNavigation();
-  const unreadMessages = 0;
+  const [unreadCount, setUnreadCount] = useState(0);
 
+  // Fetches the total unread message count
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const response = await api.get('/mobile/staff/chat/unread-count');
+      setUnreadCount(response.data.unread_count);
+    } catch (error) {
+      console.error("Failed to fetch unread message count:", error);
+    }
+  }, []);
+
+  // Refreshes the count when the screen is focused and polls for updates
+  useFocusEffect(
+    useCallback(() => {
+      fetchUnreadCount(); // Fetch immediately
+      const intervalId = setInterval(fetchUnreadCount, 15000); // Poll every 15 seconds
+      return () => clearInterval(intervalId); // Cleanup interval
+    }, [fetchUnreadCount])
+  );
+
+  // This is the unchanged useEffect for background location tracking
   useEffect(() => {
     const startBackgroundLocation = async () => {
       const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
@@ -70,7 +90,7 @@ export default function MainScreen() {
           distanceInterval: 10, // or every 10 meters
           showsBackgroundLocationIndicator: true,
           foregroundService: {
-            notificationTitle: 'ARKQuest Location Tracking',
+            notificationTitle: 'RMPOIMS Location Tracking',
             notificationBody: 'Tracking your location in background...',
           },
         });
@@ -154,7 +174,7 @@ export default function MainScreen() {
         component={ChatScreen}
         options={{
           title: 'Messages',
-          tabBarBadge: unreadMessages > 0 ? unreadMessages : null,
+          tabBarBadge: unreadCount > 0 ? unreadCount : null,
           tabBarBadgeStyle: { backgroundColor: COLORS.danger, color: COLORS.white },
         }}
       />
