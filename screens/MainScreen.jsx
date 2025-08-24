@@ -23,17 +23,15 @@ const COLORS = {
 const Tab = createBottomTabNavigator();
 const LOCATION_TASK_NAME = 'background-location-task';
 
-// Define the background task
+// Define the background task for location updates
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) {
     console.error('❌ TaskManager error:', error.message);
     return;
   }
-
   if (data) {
     const { locations } = data;
     const location = locations[0];
-
     if (location) {
       try {
         console.log('📡 Sending background location:', location.coords);
@@ -52,66 +50,61 @@ export default function MainScreen() {
   const navigation = useNavigation();
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Fetches the total unread message count
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      const response = await api.get('/mobile/staff/chat/unread-count');
-      setUnreadCount(response.data.unread_count);
-    } catch (error) {
-      console.error("Failed to fetch unread message count:", error);
-    }
-  }, []);
-
-  // Refreshes the count when the screen is focused and polls for updates
+  // Fetches the total unread message count and polls for updates
   useFocusEffect(
     useCallback(() => {
-      fetchUnreadCount(); // Fetch immediately
+      const fetchUnreadCount = async () => {
+        try {
+          const response = await api.get('/mobile/staff/chat/unread-count');
+          setUnreadCount(response.data.unread_count);
+        } catch (error) {
+          console.error("Failed to fetch unread message count:", error);
+        }
+      };
+      
+      fetchUnreadCount(); // Fetch immediately on focus
       const intervalId = setInterval(fetchUnreadCount, 15000); // Poll every 15 seconds
-      return () => clearInterval(intervalId); // Cleanup interval
-    }, [fetchUnreadCount])
+      return () => clearInterval(intervalId); // Cleanup interval on blur
+    }, [])
   );
 
-  // This is the unchanged useEffect for background location tracking
+  // Starts background location tracking when the main screen is mounted
   useEffect(() => {
     const startBackgroundLocation = async () => {
       const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
       const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
 
       if (fgStatus !== 'granted' || bgStatus !== 'granted') {
-        Alert.alert('Permission Required', 'Location access is needed to track in background.');
+        Alert.alert('Permission Required', 'Full location access is needed for background tracking.');
         return;
       }
 
-      const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-      if (!hasStarted) {
+      const isTracking = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+      if (!isTracking) {
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
           accuracy: Location.Accuracy.High,
-          timeInterval: 10000, // every 10 seconds
-          distanceInterval: 10, // or every 10 meters
+          timeInterval: 10000, // 10 seconds
+          distanceInterval: 10, // 10 meters
           showsBackgroundLocationIndicator: true,
           foregroundService: {
             notificationTitle: 'RMPOIMS Location Tracking',
-            notificationBody: 'Tracking your location in background...',
+            notificationBody: 'Your location is being tracked for order fulfillment.',
           },
         });
-
         console.log('📍 Background location tracking started');
       }
     };
 
     startBackgroundLocation();
-
-    return () => {
-      // Optionally stop location tracking on unmount (e.g., logout)
-      Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).then((started) => {
-        if (started) {
-          Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-          console.log("📍 Background location tracking stopped.");
-        }
-      });
-    };
+    
+    // NOTE: Removed cleanup function here. Stopping the task should only happen
+    // during an explicit logout action to prevent it from stopping accidentally.
   }, []);
 
+  /**
+   * ✅ CORRECTED LOGOUT FUNCTION
+   * This function now safely stops location tracking before logging out.
+   */
   const handleLogout = () => {
     Alert.alert(
       "Confirm Logout",
@@ -123,17 +116,32 @@ export default function MainScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
-              await api.post('/mobile/staff/logout');
-              await AsyncStorage.removeItem('authToken');
+              // Step 1: Safely stop location updates.
+              const isTracking = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+              if (isTracking) {
+                await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+                console.log('📍 Background location tracking stopped successfully.');
+              }
+
+              // Step 2: Notify the backend about the logout.
+              // Wrapped in its own try/catch so client-side logout proceeds even if API fails.
+              try {
+                await api.post('/mobile/staff/logout');
+              } catch (apiError) {
+                console.warn("API logout call failed, but proceeding with client-side cleanup.", apiError);
+              }
+
+            } catch (error) {
+              console.error("An error occurred during the pre-logout cleanup:", error);
+              // The process will continue to the finally block regardless.
+            } finally {
+              // Step 3: Clear all local data and navigate to the Login screen.
+              // This block runs whether the try block succeeded or failed, ensuring the user is always logged out on the device.
+              await AsyncStorage.clear(); // Use clear() for a full cleanup
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }],
               });
-            } catch (error) {
-              console.error("Logout failed:", error);
-              await AsyncStorage.removeItem('authToken');
-              navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
             }
           },
         },
