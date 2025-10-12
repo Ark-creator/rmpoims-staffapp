@@ -1,22 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-    View, 
-    Text, 
-    StyleSheet, 
-    SafeAreaView, 
-    ScrollView, 
-    TouchableOpacity, 
-    TextInput, 
-    ActivityIndicator, 
-    Alert, 
-    Modal,
-    Dimensions,
-    RefreshControl,
-    FlatList 
+import {
+    View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity,
+    TextInput, ActivityIndicator, Alert, Modal, Dimensions, RefreshControl, FlatList
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import SignatureScreen from 'react-native-signature-canvas';
 import api from '../utils/api';
@@ -47,11 +36,53 @@ const COLORS = {
 };
 
 // =================================================================
-// MODAL COMPONENTS (UNCHANGED)
+// MODAL & HELPER COMPONENTS (DEFINED BEFORE MAIN COMPONENT)
 // =================================================================
+
+const SummaryCard = ({ title, count, icon, color, isAlert, onPress }) => (
+    <TouchableOpacity onPress={onPress} disabled={!onPress} style={[styles.summaryCard, isAlert && styles.alertCard, { borderLeftColor: color }]}>
+        <View>
+            <Text style={[styles.summaryCount, isAlert && styles.alertText]}>{count}</Text>
+            <Text style={[styles.summaryTitle, isAlert && styles.alertText]}>{title}</Text>
+        </View>
+        <MaterialCommunityIcons name={icon} size={28} color={isAlert ? COLORS.white : color} />
+    </TouchableOpacity>
+);
+
+const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
+    const [name, date] = employeeInfo.split('|');
+    const activeOrders = Object.values(orderGroup || {}).flat();
+    const insufficientCount = activeOrders.reduce((count, order) => {
+        if (!order || typeof order !== 'object') return count;
+        const isInsufficient = order.available_stock === 'expired' || (typeof order.available_stock === 'number' && order.quantity && order.available_stock < order.quantity);
+        if (isInsufficient) return count + 1;
+        return count;
+    }, 0);
+
+    return (
+        <View style={styles.orderItem}>
+            <View style={styles.orderInfo}>
+                <MaterialCommunityIcons name="account-circle" size={24} color={COLORS.textLight} />
+                <View style={styles.orderTextContainer}>
+                    <Text style={styles.orderEmployee}>{name}</Text>
+                    <Text style={styles.orderDate}>{new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                </View>
+            </View>
+            <View style={styles.orderActions}>
+                {insufficientCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{insufficientCount}</Text></View>}
+                <TouchableOpacity style={styles.viewButton} onPress={onView}>
+                    <Text style={styles.viewButtonText}>View</Text>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.primary} />
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+};
+
 const InsufficientOrdersModal = ({ visible, onClose, data }) => {
     const renderHeader = () => (
         <View style={modalStyles.summaryTableHeader}>
+            <Text style={[modalStyles.summaryTableHeaderCell, { flex: 1.5 }]}>PO #</Text>
             <Text style={[modalStyles.summaryTableHeaderCell, { flex: 2.5 }]}>Product</Text>
             <Text style={[modalStyles.summaryTableHeaderCell, { flex: 2 }]}>Employee</Text>
             <Text style={[modalStyles.summaryTableHeaderCell, { flex: 1.2, textAlign: 'center' }]}>Avail</Text>
@@ -61,6 +92,7 @@ const InsufficientOrdersModal = ({ visible, onClose, data }) => {
 
     const renderItem = ({ item }) => (
         <View style={modalStyles.summaryTableRow}>
+             <Text style={[modalStyles.summaryTableCell, { flex: 1.5 }]}>{item.po_number}</Text>
             <View style={{ flex: 2.5, paddingRight: 4 }}>
                 <Text style={modalStyles.summaryTableCell} numberOfLines={1}>{item.generic_name}</Text>
                 <Text style={modalStyles.summaryTableCellSub} numberOfLines={1}>{item.brand_name}</Text>
@@ -99,7 +131,7 @@ const InsufficientOrdersModal = ({ visible, onClose, data }) => {
                         ListEmptyComponent={
                             <View style={styles.emptyState}>
                                 <MaterialCommunityIcons name="check-circle-outline" size={48} color={COLORS.success} />
-                                <Text style={styles.emptyStateText}>All orders can be fulfilled</Text>
+                                <Text style={styles.emptyStateText}>All orders can be fulfilled.</Text>
                             </View>
                         }
                     />
@@ -143,7 +175,7 @@ const InsufficientProductsModal = ({ visible, onClose, data }) => {
                         ListEmptyComponent={
                             <View style={styles.emptyState}>
                                 <MaterialCommunityIcons name="check-circle-outline" size={48} color={COLORS.success} />
-                                <Text style={styles.emptyStateText}>All products have sufficient stock</Text>
+                                <Text style={styles.emptyStateText}>All products have sufficient stock.</Text>
                             </View>
                         }
                     />
@@ -153,52 +185,60 @@ const InsufficientProductsModal = ({ visible, onClose, data }) => {
     );
 };
 
-const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }) => {
+const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest, onShowPackedBatches }) => {
     if (!orderData) return null;
 
     const { employeeInfo, orderGroup } = orderData;
-    const [name, date] = employeeInfo.split('|');
-    const activeOrders = Object.values(orderGroup || {}).filter(o => o && o.status !== 'delivered' && o.status !== 'cancelled');
+    const [name] = employeeInfo.split('|');
+    const activeOrders = Object.values(orderGroup || {}).flat().filter(o => o && o.status !== 'delivered' && o.status !== 'cancelled');
     const grandTotal = activeOrders.reduce((sum, order) => {
         if (!order || !order.quantity || !order.exclusive_deal?.price) return sum;
         return sum + (order.quantity * (order.exclusive_deal?.price || 0));
     }, 0);
 
-    const OrderRow = ({ order, isHeader }) => {
+    const OrderRow = ({ order, isHeader = false }) => {
         if (!isHeader && (!order || typeof order !== 'object')) return null;
         const product = order?.exclusive_deal?.product;
+        const poNumber = order?.purchase_order?.po_number;
         const availableStock = order?.available_stock;
         const quantity = order?.quantity;
         const isInsufficient = !isHeader && (availableStock === 'expired' || (typeof availableStock === 'number' && quantity && availableStock < quantity));
 
         return (
             <View style={[modalStyles.tableRow, isInsufficient && modalStyles.insufficientStockRow]}>
-                <View style={{ flex: 2 }}>
-                    <Text style={modalStyles.tableCellHeader} numberOfLines={1}>{isHeader ? 'Generic Name' : product?.generic_name || 'N/A'}</Text>
+                <Text style={[modalStyles.tableCell, { flex: 1.2, textAlign: 'left', fontWeight: 'bold' }]}>{isHeader ? 'PO #' : poNumber || 'N/A'}</Text>
+                <View style={{ flex: 2.5, paddingHorizontal: 4 }}>
+                    <Text style={modalStyles.tableCellHeader} numberOfLines={1}>{isHeader ? 'Product' : product?.generic_name || 'N/A'}</Text>
                     {!isHeader && <Text style={modalStyles.tableCellSub} numberOfLines={1}>{product?.brand_name || 'N/A'}</Text>}
                 </View>
-                <Text style={modalStyles.tableCell}>{isHeader ? 'Form' : product?.form || 'N/A'}</Text>
-                <Text style={[modalStyles.tableCell, availableStock === 'expired' && { color: COLORS.danger, fontWeight: 'bold' }]}>
-                    {isHeader ? 'Available' : (availableStock === 'expired' ? 'Expired' : availableStock ?? 'N/A')}
+                <Text style={[modalStyles.tableCell, { flex: 1, color: availableStock === 'expired' ? COLORS.danger : COLORS.textMedium, fontWeight: availableStock === 'expired' ? 'bold' : 'normal' }]}>
+                    {isHeader ? 'Avail.' : (availableStock === 'expired' ? 'Exp' : availableStock ?? 'N/A')}
                 </Text>
-                <Text style={modalStyles.tableCell}>{isHeader ? 'Qty' : quantity ?? 'N/A'}</Text>
+                <Text style={[modalStyles.tableCell, { flex: 1 }]}>{isHeader ? 'Qty' : quantity ?? 'N/A'}</Text>
                 {isHeader ? (
-                    <Text style={modalStyles.tableCell}>Actions</Text>
+                    <Text style={[modalStyles.tableCell, { flex: 2, textAlign: 'right' }]}>Actions</Text>
                 ) : isInsufficient ? (
-                    <View style={{ flex: 1.5, alignItems: 'center' }}><Text style={modalStyles.insufficientStockText}>Cannot Fulfill</Text></View>
+                    <View style={{ flex: 2, alignItems: 'flex-end' }}><Text style={modalStyles.insufficientStockText}>Cannot Fulfill</Text></View>
                 ) : (
-                    <TouchableOpacity style={modalStyles.changeStatusBtn} onPress={() => onUpdateStatusRequest(order)}>
-                        <Text style={modalStyles.changeStatusBtnText}>Update</Text>
-                    </TouchableOpacity>
+                    <View style={modalStyles.actionsCell}>
+                        {['packed', 'out for delivery'].includes(order.status) && (
+                            <TouchableOpacity style={modalStyles.iconButton} onPress={() => onShowPackedBatches(order)}>
+                                <MaterialCommunityIcons name="package-variant-closed" size={22} color={COLORS.secondary} />
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity style={modalStyles.changeStatusBtn} onPress={() => onUpdateStatusRequest(order)}>
+                            <Text style={modalStyles.changeStatusBtnText}>Update</Text>
+                        </TouchableOpacity>
+                    </View>
                 )}
             </View>
         );
     };
 
     return (
-        <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+         <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
             <View style={modalStyles.overlay}>
-                <View style={modalStyles.modalContainer}>
+                <View style={[modalStyles.modalContainer, { width: width * 0.98 }]}>
                     <View style={modalStyles.header}>
                         <View style={{ flex: 1 }}>
                             <Text style={modalStyles.headerTitle}>Order Details</Text>
@@ -210,18 +250,20 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
                         {activeOrders.length > 0 ? (
                             <View style={modalStyles.table}>
                                 <OrderRow isHeader />
-                                {activeOrders.map(order => <OrderRow key={order.id} order={order} onUpdateStatusRequest={onUpdateStatusRequest} />)}
+                                {activeOrders.map(order => (
+                                    <OrderRow
+                                        key={order.id}
+                                        order={order}
+                                    />
+                                ))}
                             </View>
                         ) : (
-                            <View style={styles.emptyState}>
-                                <MaterialCommunityIcons name="package-variant" size={48} color={COLORS.textLighter} />
-                                <Text style={styles.emptyStateText}>No active orders for this entry.</Text>
-                            </View>
+                            <View style={styles.emptyState}><Text style={styles.emptyStateText}>No active orders.</Text></View>
                         )}
                     </ScrollView>
                     <View style={modalStyles.footer}>
                         <Text style={modalStyles.grandTotalLabel}>TOTAL AMOUNT:</Text>
-                        <Text style={modalStyles.grandTotal}>₱{grandTotal.toLocaleString()}</Text>
+                        <Text style={modalStyles.grandTotal}>₱{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
                     </View>
                 </View>
             </View>
@@ -229,29 +271,40 @@ const ViewDetailsModal = ({ visible, onClose, orderData, onUpdateStatusRequest }
     );
 };
 
-const ChangeStatusModal = ({ visible, onClose, onSubmit, productName }) => {
+const ChangeStatusModal = ({ visible, onClose, onSubmit, order }) => {
+    const productName = order?.exclusive_deal?.product?.generic_name || 'Order';
+    const currentStatus = order?.status;
+
+    const availableStatuses = {
+        'pending': ['packed', 'cancelled'],
+        'packed': ['out for delivery', 'pending', 'cancelled'],
+        'out for delivery': ['delivered', 'pending', 'cancelled']
+    };
+    
+    const buttonsToShow = availableStatuses[currentStatus] || [];
+
     return (
         <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
             <View style={modalStyles.overlay}>
                 <View style={[modalStyles.modalContainer, { width: width * 0.85 }]}>
                     <View style={modalStyles.header}>
-                        <Text style={modalStyles.headerTitle}>Update Order Status</Text>
+                        <Text style={modalStyles.headerTitle}>Update Status</Text>
                         <TouchableOpacity onPress={onClose}><MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} /></TouchableOpacity>
                     </View>
                     <View style={modalStyles.productInfoContainer}><Text style={modalStyles.productNameTitle}>{productName}</Text></View>
                     <View style={modalStyles.statusButtonContainer}>
-                        {['pending', 'packed', 'out for delivery', 'delivered', 'cancelled'].map(status => {
+                        {buttonsToShow.map(status => {
                             const details = {
-                                pending: { icon: 'clock-outline', color: COLORS.warning },
-                                packed: { icon: 'package-variant-closed', color: COLORS.primary },
-                                'out for delivery': { icon: 'truck-fast-outline', color: COLORS.info },
-                                delivered: { icon: 'package-variant-closed-check', color: COLORS.success },
-                                cancelled: { icon: 'close-circle-outline', color: COLORS.danger },
+                                pending: { icon: 'arrow-left-circle-outline', color: COLORS.warning, text: 'Revert to Pending' },
+                                packed: { icon: 'package-variant-closed', color: COLORS.primary, text: 'Mark as Packed' },
+                                'out for delivery': { icon: 'truck-fast-outline', color: COLORS.info, text: 'Set for Delivery' },
+                                delivered: { icon: 'package-variant-closed-check', color: COLORS.success, text: 'Confirm Delivered' },
+                                cancelled: { icon: 'close-circle-outline', color: COLORS.danger, text: 'Cancel Order' },
                             }[status];
                             return (
                                 <TouchableOpacity key={status} style={[modalStyles.statusButton, { backgroundColor: details.color }]} onPress={() => onSubmit(status)}>
                                     <MaterialCommunityIcons name={details.icon} size={20} color={COLORS.white} />
-                                    <Text style={modalStyles.statusButtonText}>{status.toUpperCase()}</Text>
+                                    <Text style={modalStyles.statusButtonText}>{details.text}</Text>
                                 </TouchableOpacity>
                             );
                         })}
@@ -275,6 +328,7 @@ const AssignStaffModal = ({ visible, onClose, onSubmit, orderId }) => {
                     const response = await api.get(`/mobile/staff/orders/${orderId}/available-staff`);
                     setStaffList(response.data);
                     if (response.data.length > 0) setSelectedStaffId(response.data[0].id);
+                    else setSelectedStaffId(null);
                 } catch (error) {
                     Alert.alert('Error', 'Failed to fetch available staff.');
                 } finally {
@@ -329,11 +383,127 @@ const AssignStaffModal = ({ visible, onClose, onSubmit, orderId }) => {
     );
 };
 
+const ChooseBatchModal = ({ visible, onClose, onSubmit, order }) => {
+    const [batches, setBatches] = useState([]);
+    const [selectedBatches, setSelectedBatches] = useState({});
+    const [loading, setLoading] = useState(false);
+
+    const demandedQuantity = order?.quantity || 0;
+    const totalSelectedQuantity = Object.values(selectedBatches).reduce((sum, batch) => sum + batch.quantity, 0);
+    const isSufficient = totalSelectedQuantity >= demandedQuantity;
+
+    useEffect(() => {
+        const fetchBatches = async () => {
+            if (visible && order?.id) {
+                setLoading(true);
+                setSelectedBatches({});
+                try {
+                    const response = await api.get(`/mobile/staff/orders/${order.id}/available-batches`);
+                    setBatches(response.data);
+                } catch (error) {
+                    Alert.alert('Error', error.response?.data?.message || 'Failed to fetch available batches.');
+                    onClose();
+                } finally {
+                    setLoading(false);
+                }
+            }
+        };
+        fetchBatches();
+    }, [visible, order]);
+
+    const handleSelectBatch = (batch) => {
+        const newSelection = { ...selectedBatches };
+        if (newSelection[batch.inventory_id]) {
+            delete newSelection[batch.inventory_id];
+        } else {
+            newSelection[batch.inventory_id] = batch;
+        }
+        setSelectedBatches(newSelection);
+    };
+
+    const handleSubmit = () => {
+        if (!isSufficient) {
+            Alert.alert('Insufficient Quantity', `Please select batches with a total quantity of at least ${demandedQuantity}.`);
+            return;
+        }
+        const inv_id = Object.keys(selectedBatches).map(id => parseInt(id));
+        onSubmit({ inv_id });
+    };
+
+    return (
+        <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+            <View style={modalStyles.overlay}>
+                <View style={[modalStyles.modalContainer, { width: width * 0.95 }]}>
+                    <View style={modalStyles.header}>
+                        <Text style={modalStyles.headerTitle}>Select Batches to Pack</Text>
+                        <TouchableOpacity onPress={onClose}><MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} /></TouchableOpacity>
+                    </View>
+                    <View style={modalStyles.quantityTracker}>
+                        <Text>Required: <Text style={{ fontWeight: 'bold' }}>{demandedQuantity}</Text></Text>
+                        <Text style={{ color: isSufficient ? COLORS.success : COLORS.danger }}>
+                            Selected: <Text style={{ fontWeight: 'bold' }}>{totalSelectedQuantity}</Text>
+                        </Text>
+                    </View>
+                    {loading ? <ActivityIndicator style={{ margin: 20 }} /> : (
+                        <FlatList
+                            data={batches}
+                            keyExtractor={(item) => item.inventory_id.toString()}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity style={modalStyles.batchRow} onPress={() => handleSelectBatch(item)}>
+                                    <MaterialCommunityIcons name={selectedBatches[item.inventory_id] ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={24} color={COLORS.primary} />
+                                    <View style={modalStyles.batchInfo}>
+                                        <Text style={modalStyles.batchNumber}>{item.batch_number} (Qty: {item.quantity})</Text>
+                                        <Text style={modalStyles.batchExpiry}>Expires: {new Date(item.expiry_date).toLocaleDateString()}</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={<View style={styles.emptyState}><Text>No available batches found.</Text></View>}
+                        />
+                    )}
+                    <TouchableOpacity style={[styles.button, { marginTop: 16 }, !isSufficient && styles.disabledButton]} disabled={!isSufficient} onPress={handleSubmit}>
+                        <Text style={styles.buttonText}>Confirm Packed</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
+const ViewPackedBatchesModal = ({ visible, onClose, order }) => {
+    if (!order) return null;
+    return (
+        <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+            <View style={modalStyles.overlay}>
+                <View style={[modalStyles.modalContainer, { width: width * 0.9 }]}>
+                    <View style={modalStyles.header}>
+                        <Text style={modalStyles.headerTitle}>Packed Batches</Text>
+                        <TouchableOpacity onPress={onClose}><MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} /></TouchableOpacity>
+                    </View>
+                       <FlatList
+                            data={order.packed_batches || []}
+                            keyExtractor={(item, index) => item.batch_number + index}
+                            renderItem={({ item }) => (
+                                <View style={[modalStyles.batchRow, { paddingVertical: 12 }]}>
+                                    <MaterialCommunityIcons name="package-variant-closed" size={24} color={COLORS.textMedium} />
+                                    <View style={modalStyles.batchInfo}>
+                                        <Text style={modalStyles.batchNumber}>{item.batch_number} (Qty: {item.quantity})</Text>
+                                        <Text style={modalStyles.batchExpiry}>Expires: {new Date(item.expiry_date).toLocaleDateString()}</Text>
+                                    </View>
+                                </View>
+                            )}
+                            ListEmptyComponent={<View style={styles.emptyState}><Text>No batch information found for this order.</Text></View>}
+                       />
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
 // =================================================================
-// SCANNER COMPONENT (INTEGRATED)
+// STANDALONE SCANNER COMPONENT (NAMED EXPORT)
 // =================================================================
-// FIX: Renamed to ScannerScreen and exported to be available for the navigator
-export const ScannerScreen = ({ onScanSuccess, onCancel, isModal = false }) => {
+export const ScannerScreen = () => {
+    const navigation = useNavigation();
     const [permission, requestPermission] = useCameraPermissions();
     const [step, setStep] = useState('scan');
     const [scannedData, setScannedData] = useState(null);
@@ -347,6 +517,16 @@ export const ScannerScreen = ({ onScanSuccess, onCancel, isModal = false }) => {
         }
     }, [permission]);
 
+    const handleScanSuccess = () => {
+        Alert.alert("Success", "Delivery confirmed successfully.", [
+            { text: "OK", onPress: () => navigation.goBack() }
+        ]);
+    };
+    
+    const onCancel = () => {
+        navigation.goBack();
+    };
+
     if (!permission) return <View style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>;
     if (!permission.granted) {
         return (
@@ -356,11 +536,9 @@ export const ScannerScreen = ({ onScanSuccess, onCancel, isModal = false }) => {
                 <TouchableOpacity style={[styles.button, { marginTop: 20 }]} onPress={requestPermission}>
                     <Text style={styles.buttonText}>Grant Permission</Text>
                 </TouchableOpacity>
-                {isModal && (
-                    <TouchableOpacity style={[styles.button, styles.clearButton, { marginTop: 10, width: '80%' }]} onPress={onCancel}>
-                        <Text style={styles.clearButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                )}
+                <TouchableOpacity style={[styles.button, styles.clearButton, { marginTop: 10, width: '80%' }]} onPress={onCancel}>
+                    <Text style={styles.clearButtonText}>Cancel</Text>
+                </TouchableOpacity>
             </SafeAreaView>
         );
     }
@@ -393,20 +571,14 @@ export const ScannerScreen = ({ onScanSuccess, onCancel, isModal = false }) => {
             return;
         }
         setIsLoading(true);
-        const formData = new FormData();
-        Object.keys(scannedData).forEach(key => formData.append(key, String(scannedData[key])));
-        formData.append('signature', {
-            uri: signature,
-            name: `signature_${scannedData.order_id}.png`,
-            type: 'image/png'
-        });
+        const payload = {
+            order_id: scannedData.order_id,
+            signature: signature // The base64 string
+        };
 
         try {
-            const response = await api.post('/mobile/staff/process-scan', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            Alert.alert('Success', response.data.message);
-            if (onScanSuccess) onScanSuccess(); // Callback to hide scanner and refresh orders
+            await api.post('/mobile/staff/process-scan', payload);
+            handleScanSuccess();
         } catch (error) {
             Alert.alert('Submission Error', error.response?.data?.message || 'Failed to process the scan.');
         } finally {
@@ -451,22 +623,11 @@ export const ScannerScreen = ({ onScanSuccess, onCancel, isModal = false }) => {
         </>
     );
 
-    if (isModal) {
-        return (
-            <Modal visible={true} animationType="slide">
-                <SafeAreaView style={styles.scannerContainer}>
-                    <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
-                        <MaterialCommunityIcons name="close" size={30} color={COLORS.textDark} />
-                    </TouchableOpacity>
-                    {content}
-                </SafeAreaView>
-            </Modal>
-        );
-    }
-    
-    // This part is for standalone screen usage, if needed
     return (
         <SafeAreaView style={styles.scannerContainer}>
+            <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+                <MaterialCommunityIcons name="close" size={30} color={COLORS.textDark} />
+            </TouchableOpacity>
             {content}
         </SafeAreaView>
     );
@@ -474,84 +635,96 @@ export const ScannerScreen = ({ onScanSuccess, onCancel, isModal = false }) => {
 
 
 // =================================================================
-// MAIN ORDERS SCREEN COMPONENT
+// MAIN ORDERS SCREEN COMPONENT (DEFAULT EXPORT)
 // =================================================================
 export default function OrdersScreen() {
     const isFocused = useIsFocused();
+    const navigation = useNavigation();
     const [data, setData] = useState({ summary: null, ordersByProvince: {} });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [refreshing, setRefreshing] = useState(false);
     const [filters, setFilters] = useState({ company: 'All', search: '' });
 
-    const [isScannerVisible, setScannerVisible] = useState(false); // State to control scanner visibility
-
     const [isViewModalVisible, setViewModalVisible] = useState(false);
     const [isStatusModalVisible, setStatusModalVisible] = useState(false);
     const [isAssignStaffModalVisible, setAssignStaffModalVisible] = useState(false);
     const [isInsufficientOrdersModalVisible, setInsufficientOrdersModalVisible] = useState(false);
     const [isInsufficientProductsModalVisible, setInsufficientProductsModalVisible] = useState(false);
-    
+    const [isChooseBatchModalVisible, setChooseBatchModalVisible] = useState(false);
+    const [isViewPackedBatchesModalVisible, setViewPackedBatchesModalVisible] = useState(false);
+
     const [selectedGroupData, setSelectedGroupData] = useState(null);
-    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [selectedOrder, setSelectedOrder] = useState(null);
     const [modalData, setModalData] = useState([]);
 
-    const fetchOrders = async () => { 
-        setLoading(true); 
-        try { 
-            const response = await api.get('/mobile/staff/orders'); 
-            setData(response.data); 
-            setError(''); 
-        } catch (err) { 
-            setError('Failed to load order data. Please try again.'); 
-        } finally { 
-            setLoading(false); 
+    const fetchOrders = async () => {
+        if (!refreshing) setLoading(true);
+        try {
+            const response = await api.get('/mobile/staff/orders');
+            setData(response.data);
+            setError('');
+        } catch (err) {
+            setError('Failed to load order data. Please try again.');
+        } finally {
+            setLoading(false);
             setRefreshing(false);
-        } 
+        }
     };
-    
-    useEffect(() => { 
-        if (isFocused) { 
-            fetchOrders(); 
-        } 
+
+    useEffect(() => {
+        if (isFocused) {
+            fetchOrders();
+        }
     }, [isFocused]);
 
-    const handleRefresh = () => {
-        setRefreshing(true);
-        fetchOrders();
-    };
-
-    const handleScanSuccess = () => {
-        setScannerVisible(false);
-        fetchOrders(); // Refresh data after successful scan
-    };
-
+    const handleRefresh = () => { setRefreshing(true); fetchOrders(); };
     const handleOpenViewModal = (orderData) => { setSelectedGroupData(orderData); setViewModalVisible(true); };
-    const handleUpdateStatusRequest = (product) => { setSelectedProduct(product); setStatusModalVisible(true); };
-    const handleCloseModals = () => { 
-        setViewModalVisible(false); 
-        setStatusModalVisible(false); 
+
+    const handleUpdateStatusRequest = (order) => {
+        setSelectedOrder(order);
+        setStatusModalVisible(true);
+    };
+
+    const handleShowPackedBatches = (order) => {
+        setSelectedOrder(order);
+        setViewPackedBatchesModalVisible(true);
+    };
+
+    const handleCloseModals = () => {
+        setViewModalVisible(false);
+        setStatusModalVisible(false);
         setAssignStaffModalVisible(false);
         setInsufficientOrdersModalVisible(false);
         setInsufficientProductsModalVisible(false);
-        setSelectedGroupData(null); 
-        setSelectedProduct(null); 
+        setChooseBatchModalVisible(false);
+        setViewPackedBatchesModalVisible(false);
+        setSelectedGroupData(null);
+        setSelectedOrder(null);
     };
+
     const showInsufficientOrdersModal = (data) => { setModalData(data || []); setInsufficientOrdersModalVisible(true); };
     const showInsufficientProductsModal = (data) => { setModalData(data || []); setInsufficientProductsModalVisible(true); };
 
-    const handleStatusSubmit = async (status, staffId = null) => {
-        if (!selectedProduct) return;
-        if (status === 'out for delivery' && !staffId) {
+    const handleStatusSubmit = async (status, extraData = {}) => {
+        if (!selectedOrder) return;
+
+        if (status === 'packed' && !extraData.inv_id) {
+            setStatusModalVisible(false);
+            setChooseBatchModalVisible(true);
+            return;
+        }
+
+        if (status === 'out for delivery' && !extraData.staff_id) {
             setStatusModalVisible(false);
             setAssignStaffModalVisible(true);
             return;
         }
+
         try {
-            const payload = { status };
-            if (staffId) payload.staff_id = staffId;
-            await api.post(`/mobile/staff/orders/${selectedProduct.id}/update-status`, payload);
-            Alert.alert('Status Updated', `Order status updated to "${status}".`);
+            const payload = { status, ...extraData };
+            await api.put(`/mobile/staff/orders/${selectedOrder.id}/update-status`, payload);
+            Alert.alert('Status Updated', `Order status has been updated to "${status}".`);
             handleCloseModals();
             fetchOrders();
         } catch (error) {
@@ -559,10 +732,16 @@ export default function OrdersScreen() {
         }
     };
 
-    const handleAssignStaffSubmit = (staffId) => handleStatusSubmit('out for delivery', staffId);
+    const handleBatchSelectionSubmit = ({ inv_id }) => {
+        handleStatusSubmit('packed', { inv_id });
+    };
 
-    const companyNames = ['All', ...new Set(Object.values(data.ordersByProvince).flatMap(c => Object.keys(c)))];
-    
+    const handleAssignStaffSubmit = (staffId) => {
+        handleStatusSubmit('out for delivery', { staff_id: staffId });
+    };
+
+    const companyNames = ['All', ...new Set(Object.values(data.ordersByProvince || {}).flatMap(c => Object.keys(c)))];
+
     const summaryData = data.summary ? [
         { title: 'Orders This Week', count: data.summary.ordersThisWeek, icon: 'chart-line', color: COLORS.primary },
         { title: 'Pending Orders', count: data.summary.pendingOrders, icon: 'clock-outline', color: COLORS.warning },
@@ -570,114 +749,136 @@ export default function OrdersScreen() {
         { title: 'Insufficient Products', count: data.summary.insufficientProducts, icon: 'package-variant-closed-minus', color: COLORS.danger, isAlert: true, onPress: () => showInsufficientProductsModal(data.summary.insufficientSummary) },
     ] : [];
 
-    const SummaryCard = ({ title, count, icon, color, isAlert, onPress }) => (
-        <TouchableOpacity onPress={onPress} disabled={!onPress} style={[styles.summaryCard, isAlert && styles.alertCard, { borderLeftColor: color }]}>
-            <View>
-                <Text style={[styles.summaryCount, isAlert && styles.alertText]}>{count}</Text>
-                <Text style={[styles.summaryTitle, isAlert && styles.alertText]}>{title}</Text>
-            </View>
-            <MaterialCommunityIcons name={icon} size={28} color={isAlert ? COLORS.white : color} />
-        </TouchableOpacity>
-    );
-
-    const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
-        const [name, date] = employeeInfo.split('|');
-        const insufficientCount = Object.values(orderGroup || {}).reduce((count, order) => {
-            if (!order || typeof order !== 'object') return count;
-            const isInsufficient = order.available_stock === 'expired' || (typeof order.available_stock === 'number' && order.quantity && order.available_stock < order.quantity);
-            if (isInsufficient && order.available_stock !== 0) return count + 1;
-            return count;
-        }, 0);
-    
-        return (
-            <View style={styles.orderItem}>
-                <View style={styles.orderInfo}>
-                    <MaterialCommunityIcons name="account-circle" size={24} color={COLORS.textLight} />
-                    <View style={styles.orderTextContainer}>
-                        <Text style={styles.orderEmployee}>{name}</Text>
-                        <Text style={styles.orderDate}>{new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-                    </View>
-                </View>
-                <View style={styles.orderActions}>
-                    {insufficientCount > 0 && <View style={styles.badge}><Text style={styles.badgeText}>{insufficientCount}</Text></View>}
-                    <TouchableOpacity style={styles.viewButton} onPress={onView}>
-                        <Text style={styles.viewButtonText}>View</Text>
-                        <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.primary} />
-                    </TouchableOpacity>
-                </View>
-            </View>
-        );
-    };
-
-    if (isScannerVisible) {
-        // FIX: Renamed to ScannerScreen and passed isModal prop
-        return <ScannerScreen onScanSuccess={handleScanSuccess} onCancel={() => setScannerVisible(false)} isModal={true} />;
-    }
-
     return (
         <SafeAreaView style={styles.container}>
-            <ViewDetailsModal visible={isViewModalVisible} onClose={handleCloseModals} orderData={selectedGroupData} onUpdateStatusRequest={handleUpdateStatusRequest} />
-            <ChangeStatusModal visible={isStatusModalVisible} onClose={handleCloseModals} onSubmit={handleStatusSubmit} productName={selectedProduct?.exclusive_deal?.product?.generic_name || ''} />
-            <AssignStaffModal visible={isAssignStaffModalVisible} onClose={handleCloseModals} onSubmit={handleAssignStaffSubmit} orderId={selectedProduct?.id} />
-            <InsufficientOrdersModal visible={isInsufficientOrdersModalVisible} onClose={handleCloseModals} data={modalData} />
-            <InsufficientProductsModal visible={isInsufficientProductsModalVisible} onClose={handleCloseModals} data={modalData} />
-            
-            <ScrollView contentContainerStyle={styles.scrollContainer} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />} showsVerticalScrollIndicator={false}>
+            <ViewDetailsModal
+                visible={isViewModalVisible}
+                onClose={handleCloseModals}
+                orderData={selectedGroupData}
+                onUpdateStatusRequest={handleUpdateStatusRequest}
+                onShowPackedBatches={handleShowPackedBatches}
+            />
+            <ChangeStatusModal
+                visible={isStatusModalVisible}
+                onClose={handleCloseModals}
+                onSubmit={handleStatusSubmit}
+                order={selectedOrder}
+            />
+            <AssignStaffModal
+                visible={isAssignStaffModalVisible}
+                onClose={handleCloseModals}
+                onSubmit={handleAssignStaffSubmit}
+                orderId={selectedOrder?.id}
+            />
+            <InsufficientOrdersModal
+                visible={isInsufficientOrdersModalVisible}
+                onClose={handleCloseModals}
+                data={modalData}
+            />
+            <InsufficientProductsModal
+                visible={isInsufficientProductsModalVisible}
+                onClose={handleCloseModals}
+                data={modalData}
+            />
+            <ChooseBatchModal
+                visible={isChooseBatchModalVisible}
+                onClose={handleCloseModals}
+                onSubmit={handleBatchSelectionSubmit}
+                order={selectedOrder}
+            />
+            <ViewPackedBatchesModal
+                visible={isViewPackedBatchesModalVisible}
+                onClose={handleCloseModals}
+                order={selectedOrder}
+            />
+
+            <ScrollView
+                contentContainerStyle={styles.scrollContainer}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />}
+                showsVerticalScrollIndicator={false}
+            >
                 {loading && !refreshing ? (
-                    <ActivityIndicator size="large" color={COLORS.primaryDark} style={styles.loader}/>
+                    <ActivityIndicator size="large" color={COLORS.primaryDark} style={styles.loader} />
                 ) : error ? (
                     <View style={styles.errorContainer}>
                         <MaterialCommunityIcons name="alert-circle-outline" size={48} color={COLORS.danger} />
                         <Text style={styles.errorText}>{error}</Text>
-                        <TouchableOpacity style={styles.button} onPress={fetchOrders}><Text style={styles.buttonText}>Retry</Text></TouchableOpacity>
+                        <TouchableOpacity style={styles.button} onPress={fetchOrders}>
+                            <Text style={styles.buttonText}>Retry</Text>
+                        </TouchableOpacity>
                     </View>
                 ) : (
                     <>
                         <Text style={styles.screenTitle}>Order Management</Text>
-                        <View style={styles.summaryGrid}>{summaryData.map((item, i) => <SummaryCard key={i} {...item} />)}</View>
+                        <View style={styles.summaryGrid}>
+                            {summaryData.map((item, i) => (
+                                <SummaryCard key={i} {...item} />
+                            ))}
+                        </View>
+
                         <View style={styles.filterSection}>
                             <View style={styles.searchContainer}>
                                 <MaterialCommunityIcons name="magnify" size={22} color={COLORS.textLighter} />
-                                <TextInput placeholder="Search Customer..." placeholderTextColor={COLORS.textLighter} style={styles.searchInput} value={filters.search} onChangeText={t => setFilters(f => ({ ...f, search: t }))} />
+                                <TextInput
+                                    placeholder="Search Customer..."
+                                    placeholderTextColor={COLORS.textLighter}
+                                    style={styles.searchInput}
+                                    value={filters.search}
+                                    onChangeText={t => setFilters(f => ({ ...f, search: t }))}
+                                />
                             </View>
                             <View style={styles.pickerContainer}>
-                                <Picker selectedValue={filters.company} onValueChange={v => setFilters(f => ({ ...f, company: v }))} style={styles.picker} dropdownIconColor={COLORS.primary}>
-                                    {companyNames.map(n => <Picker.Item key={n} label={n === 'All' ? 'All Companies' : n} value={n} />)}
+                                <Picker
+                                    selectedValue={filters.company}
+                                    onValueChange={v => setFilters(f => ({ ...f, company: v }))}
+                                    style={styles.picker}
+                                    dropdownIconColor={COLORS.primary}
+                                >
+                                    {companyNames.map(n => (
+                                        <Picker.Item key={n} label={n === 'All' ? 'All Companies' : n} value={n} />
+                                    ))}
                                 </Picker>
                             </View>
                         </View>
-                        
+
                         <View style={styles.actionBar}>
-                            <TouchableOpacity style={[styles.button, styles.scanButton]} onPress={() => setScannerVisible(true)}>
+                            <TouchableOpacity style={[styles.button, styles.scanButton]} onPress={() => navigation.navigate('ScannerScreen')}>
                                 <MaterialCommunityIcons name="qrcode-scan" size={20} color={COLORS.white} />
-                                <Text style={styles.buttonText}>Scan QR to Delivered</Text>
+                                <Text style={styles.buttonText}>Scan QR to Deliver</Text>
                             </TouchableOpacity>
                         </View>
-                        
-                        {Object.entries(data.ordersByProvince).map(([province, companies]) => (
+
+                        {Object.keys(data.ordersByProvince).length > 0 ? Object.entries(data.ordersByProvince).map(([province, companies]) => (
                             <View key={province} style={styles.provinceSection}>
                                 <View style={styles.sectionHeader}>
                                     <MaterialCommunityIcons name="map-marker" size={20} color={COLORS.primary} />
                                     <Text style={styles.provinceTitle}>{province}</Text>
                                 </View>
-                                {Object.entries(companies).filter(([co]) => filters.company === 'All' || filters.company === co).map(([co, employees]) => {
-                                    const filteredEmployees = Object.entries(employees).filter(([emp]) => emp.toLowerCase().includes(filters.search.toLowerCase()));
-                                    if (filteredEmployees.length === 0) return null;
-                                    return (
-                                        <View key={co} style={styles.companySection}>
-                                            <Text style={styles.companyTitle}>{co}</Text>
-                                            {filteredEmployees.map(([emp, orders]) => <OrderItemCard key={emp} employeeInfo={emp} orderGroup={orders} onView={() => handleOpenViewModal({ employeeInfo: emp, orderGroup: orders })} />)}
-                                        </View>
-                                    );
+                                {Object.entries(companies)
+                                    .filter(([co]) => filters.company === 'All' || filters.company === co)
+                                    .map(([co, employees]) => {
+                                        const filteredEmployees = Object.entries(employees).filter(([emp]) => emp.toLowerCase().includes(filters.search.toLowerCase()));
+                                        if (filteredEmployees.length === 0) return null;
+                                        return (
+                                            <View key={co} style={styles.companySection}>
+                                                <Text style={styles.companyTitle}>{co}</Text>
+                                                {filteredEmployees.map(([emp, orders]) => (
+                                                    <OrderItemCard
+                                                        key={emp}
+                                                        employeeInfo={emp}
+                                                        orderGroup={orders}
+                                                        onView={() => handleOpenViewModal({ employeeInfo: emp, orderGroup: orders })}
+                                                    />
+                                                ))}
+                                            </View>
+                                        );
                                 })}
                             </View>
-                        ))}
-                        
-                        {Object.keys(data.ordersByProvince).length === 0 && (
+                        )) : (
                             <View style={styles.emptyState}>
                                 <MaterialCommunityIcons name="package-variant-closed" size={48} color={COLORS.textLighter} />
                                 <Text style={styles.emptyStateText}>No orders found</Text>
-                                <Text style={styles.emptyStateSubtext}>Orders will appear here when available</Text>
+                                <Text style={styles.emptyStateSubtext}>Orders will appear here when available.</Text>
                             </View>
                         )}
                     </>
@@ -697,14 +898,14 @@ const styles = StyleSheet.create({
     screenTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 16 },
     summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 },
     summaryCard: { width: '48%', backgroundColor: COLORS.white, padding: 16, borderRadius: 8, marginBottom: 12, elevation: 1, shadowColor: COLORS.textDark, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderLeftWidth: 4 },
-    alertCard: { backgroundColor: COLORS.danger }, 
-    summaryCount: { fontSize: 22, fontWeight: 'bold', color: COLORS.textDark }, 
-    summaryTitle: { fontSize: 14, color: COLORS.textLight, marginTop: 4 }, 
+    alertCard: { backgroundColor: COLORS.danger },
+    summaryCount: { fontSize: 22, fontWeight: 'bold', color: COLORS.textDark },
+    summaryTitle: { fontSize: 14, color: COLORS.textLight, marginTop: 4 },
     alertText: { color: COLORS.white },
     filterSection: { backgroundColor: COLORS.white, borderRadius: 8, padding: 16, marginBottom: 16, elevation: 1 },
     searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
-    searchInput: { flex: 1, fontSize: 16, marginLeft: 8, color: COLORS.textDark }, 
-    pickerContainer: { backgroundColor: COLORS.background, borderRadius: 8, overflow: 'hidden' }, 
+    searchInput: { flex: 1, fontSize: 16, marginLeft: 8, color: COLORS.textDark },
+    pickerContainer: { backgroundColor: COLORS.background, borderRadius: 8, overflow: 'hidden' },
     picker: { width: '100%', color: COLORS.textDark },
     actionBar: { marginBottom: 16 },
     scanButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, backgroundColor: COLORS.primaryDark },
@@ -715,33 +916,32 @@ const styles = StyleSheet.create({
     companyTitle: { fontSize: 16, fontWeight: '600', color: COLORS.textMedium, marginBottom: 8 },
     orderItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
     orderInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    orderTextContainer: { marginLeft: 12 },
-    orderEmployee: { fontSize: 16, fontWeight: '600', color: COLORS.textDark }, 
+    orderTextContainer: { marginLeft: 12, flex: 1 },
+    orderEmployee: { fontSize: 16, fontWeight: '600', color: COLORS.textDark },
     orderDate: { fontSize: 13, color: COLORS.textLight, marginTop: 2 },
     orderActions: { flexDirection: 'row', alignItems: 'center' },
     badge: { backgroundColor: COLORS.danger, borderRadius: 10, minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
-    badgeText: { color: COLORS.white, fontSize: 12, fontWeight: 'bold', paddingHorizontal: 4 }, 
-    viewButton: { flexDirection: 'row', alignItems: 'center' }, 
+    badgeText: { color: COLORS.white, fontSize: 12, fontWeight: 'bold', paddingHorizontal: 4 },
+    viewButton: { flexDirection: 'row', alignItems: 'center' },
     viewButtonText: { color: COLORS.primary, fontWeight: '600', marginRight: 4 },
-    button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: 8, gap: 8, elevation: 2 }, 
+    button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, paddingVertical: 12, borderRadius: 8, gap: 8, elevation: 2 },
     buttonText: { color: COLORS.white, fontWeight: 'bold', fontSize: 16 },
-    clearButton: { backgroundColor: COLORS.dangerLight, width: '48%' }, 
+    clearButton: { backgroundColor: COLORS.dangerLight, width: '48%' },
     clearButtonText: { color: COLORS.danger, fontWeight: 'bold' },
-    submitButton: { backgroundColor: COLORS.primary, width: '48%' }, 
-    disabledButton: { backgroundColor: COLORS.primaryLight },
+    submitButton: { backgroundColor: COLORS.primary, width: '48%' },
+    disabledButton: { opacity: 0.5 },
     errorContainer: { alignItems: 'center', padding: 20, marginTop: 40 },
     errorText: { textAlign: 'center', color: COLORS.danger, marginVertical: 16, fontSize: 16 },
-    emptyState: { alignItems: 'center', padding: 40, marginTop: 20 },
+    emptyState: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
     emptyStateText: { fontSize: 16, color: COLORS.textMedium, marginTop: 12, fontWeight: '500' },
     emptyStateSubtext: { fontSize: 14, color: COLORS.textLight, marginTop: 4, textAlign: 'center' },
-    scannerContainer: { flex: 1, backgroundColor: COLORS.white }, 
-    center: { justifyContent: 'center', alignItems: 'center' }, 
+    scannerContainer: { flex: 1, backgroundColor: COLORS.white },
+    center: { justifyContent: 'center', alignItems: 'center' },
     permissionText: { fontSize: 16, textAlign: 'center', paddingHorizontal: 20, color: COLORS.textMedium },
-    loadingText: { marginTop: 16, fontSize: 16, color: COLORS.textMedium },
     scannerOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     scannerFrame: { width: 250, height: 250, borderWidth: 2, borderColor: COLORS.white, position: 'relative', borderRadius: 12 },
     scanPrompt: { color: COLORS.white, fontSize: 16, marginTop: 20, backgroundColor: 'rgba(0,0,0,0.7)', padding: 8, borderRadius: 4 },
-    signatureContainer: { flex: 1, padding: 20, backgroundColor: COLORS.white }, 
+    signatureContainer: { flex: 1, padding: 20, backgroundColor: COLORS.white },
     signatureHeader: { marginBottom: 16 },
     signatureTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', color: COLORS.textDark },
     signatureSubtitle: { fontSize: 14, color: COLORS.textLight, textAlign: 'center', marginTop: 4 },
@@ -751,18 +951,20 @@ const styles = StyleSheet.create({
 });
 
 const modalStyles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    modalContainer: { width: '100%', backgroundColor: COLORS.white, borderRadius: 12, padding: 20, maxHeight: '85%' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
+    overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 10 },
+    modalContainer: { width: '100%', backgroundColor: COLORS.white, borderRadius: 12, padding: 20, maxHeight: '90%' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+    headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, flex: 1, marginRight: 8 },
     headerSubtitle: { fontSize: 14, color: COLORS.textLight, marginTop: 4 },
     contentScrollView: { marginVertical: 12 },
     table: { borderRadius: 6, marginBottom: 16 },
-    tableRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, alignItems: 'center', justifyContent: 'space-between' },
-    tableCellHeader: { fontSize: 12, color: COLORS.textDark, fontWeight: 'bold' }, 
-    tableCellSub: { fontSize: 11, color: COLORS.textLight },
-    tableCell: { fontSize: 12, color: COLORS.textMedium, flex: 1, textAlign: 'center' },
-    changeStatusBtn: { flex: 1.5, backgroundColor: COLORS.primaryLight, paddingVertical: 6, borderRadius: 15, alignItems: 'center' },
+    tableRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, alignItems: 'center', },
+    tableCellHeader: { fontSize: 11, color: COLORS.textDark, fontWeight: 'bold' },
+    tableCellSub: { fontSize: 10, color: COLORS.textLight },
+    tableCell: { fontSize: 12, color: COLORS.textMedium, flex: 1, textAlign: 'center', paddingHorizontal: 2 },
+    actionsCell: { flex: 2, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8 },
+    iconButton: { padding: 4 },
+    changeStatusBtn: { backgroundColor: COLORS.primaryLight, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 15 },
     changeStatusBtnText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 11 },
     footer: { paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.borderLight, alignItems: 'flex-end' },
     grandTotalLabel: { fontSize: 14, color: COLORS.textLight },
@@ -784,4 +986,9 @@ const modalStyles = StyleSheet.create({
     summaryTableRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, alignItems: 'center', },
     summaryTableCell: { fontSize: 13, color: COLORS.textMedium, fontWeight: '500', },
     summaryTableCellSub: { fontSize: 11, color: COLORS.textLighter, marginTop: 2, },
+    quantityTracker: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, backgroundColor: COLORS.background, borderRadius: 6, marginVertical: 12 },
+    batchRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+    batchInfo: { marginLeft: 12, flex: 1 },
+    batchNumber: { fontSize: 15, fontWeight: '500', color: COLORS.textDark },
+    batchExpiry: { fontSize: 13, color: COLORS.textLight, marginTop: 2 },
 });
