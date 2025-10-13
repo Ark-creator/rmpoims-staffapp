@@ -12,9 +12,6 @@ import api from '../utils/api';
 
 const { width } = Dimensions.get('window');
 
-// =================================================================
-// COLOR CONSTANTS
-// =================================================================
 const COLORS = {
     primary: '#1A73E8',
     primaryLight: '#E8F0FE',
@@ -34,10 +31,6 @@ const COLORS = {
     border: '#E2E8F0',
     borderLight: '#F0F0F0'
 };
-
-// =================================================================
-// MODAL & HELPER COMPONENTS (DEFINED BEFORE MAIN COMPONENT)
-// =================================================================
 
 const SummaryCard = ({ title, count, icon, color, isAlert, onPress }) => (
     <TouchableOpacity onPress={onPress} disabled={!onPress} style={[styles.summaryCard, isAlert && styles.alertCard, { borderLeftColor: color }]}>
@@ -76,6 +69,139 @@ const OrderItemCard = ({ employeeInfo, orderGroup, onView }) => {
                 </TouchableOpacity>
             </View>
         </View>
+    );
+};
+
+const CreateOrderModal = ({ visible, onClose, onOrderCreated }) => {
+    const [companies, setCompanies] = useState([]);
+    const [usersByCompany, setUsersByCompany] = useState({});
+    const [dealsByCompany, setDealsByCompany] = useState({});
+    const [loading, setLoading] = useState(false);
+
+    const [selectedCompany, setSelectedCompany] = useState(null);
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [selectedDeal, setSelectedDeal] = useState(null);
+    const [poNumber, setPoNumber] = useState('');
+    const [quantity, setQuantity] = useState('');
+    const [dateOrdered, setDateOrdered] = useState('');
+
+    useEffect(() => {
+        if (visible) {
+            const today = new Date().toISOString().split('T')[0];
+            setDateOrdered(today);
+            const fetchFormData = async () => {
+                setLoading(true);
+                try {
+                    const [companiesRes, usersAndDealsRes] = await Promise.all([
+                        api.get('/mobile/staff/form-data/companies'),
+                        api.get('/mobile/staff/form-data/users-and-deals')
+                    ]);
+                    setCompanies(companiesRes.data);
+                    setUsersByCompany(usersAndDealsRes.data.usersByCompany);
+                    setDealsByCompany(usersAndDealsRes.data.dealsByCompany);
+                } catch (error) {
+                    console.error("Error fetching form data:", error.response?.data || error.message);
+                    Alert.alert('Error', 'Could not load data for the order form.');
+                    onClose();
+                } finally {
+                    setLoading(false);
+                }
+            };
+            fetchFormData();
+        } else {
+            setSelectedCompany(null);
+            setSelectedUser(null);
+            setSelectedDeal(null);
+            setPoNumber('');
+            setQuantity('');
+        }
+    }, [visible]);
+
+    const handleCompanyChange = (companyId) => {
+        setSelectedCompany(companyId);
+        setSelectedUser(null);
+        setSelectedDeal(null);
+    };
+
+    const handleSubmit = async () => {
+        if (!selectedUser || !selectedDeal || !poNumber || !quantity || !dateOrdered) {
+            Alert.alert('Incomplete Form', 'Please fill out all fields.');
+            return;
+        }
+        setLoading(true);
+        try {
+            const payload = {
+                user_id: selectedUser,
+                exclusive_deal_id: selectedDeal,
+                purchase_order_id: poNumber,
+                quantity: parseInt(quantity, 10),
+                date_ordered: dateOrdered,
+            };
+            await api.post('/mobile/staff/orders', payload);
+            Alert.alert('Success', 'Order created successfully.');
+            onOrderCreated();
+        } catch (error) {
+            Alert.alert('Creation Failed', error.response?.data?.message || 'An error occurred.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const availableUsers = selectedCompany ? usersByCompany[selectedCompany] || [] : [];
+    const availableDeals = selectedCompany ? dealsByCompany[selectedCompany] || [] : [];
+
+    return (
+        <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
+            <View style={modalStyles.overlay}>
+                <View style={[modalStyles.modalContainer, { width: width * 0.95 }]}>
+                    <View style={modalStyles.header}>
+                        <Text style={modalStyles.headerTitle}>Create New Order</Text>
+                        <TouchableOpacity onPress={onClose}><MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} /></TouchableOpacity>
+                    </View>
+                    <ScrollView style={{ maxHeight: Dimensions.get('window').height * 0.7 }}>
+                        {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{ margin: 20 }} /> : (
+                            <View style={{ paddingVertical: 10 }}>
+                                <Text style={modalStyles.pickerLabel}>Company</Text>
+                                <View style={styles.pickerContainer}>
+                                    <Picker selectedValue={selectedCompany} onValueChange={handleCompanyChange}>
+                                        <Picker.Item label="Select a company..." value={null} />
+                                        {companies.map(c => <Picker.Item key={c.id} label={c.name} value={c.id} />)}
+                                    </Picker>
+                                </View>
+
+                                <Text style={modalStyles.pickerLabel}>Customer / Employee</Text>
+                                <View style={styles.pickerContainer}>
+                                    <Picker selectedValue={selectedUser} onValueChange={itemValue => setSelectedUser(itemValue)} enabled={!!selectedCompany}>
+                                        <Picker.Item label={selectedCompany ? "Select a user..." : "Please select a company first"} value={null} />
+                                        {availableUsers.map(u => <Picker.Item key={u.id} label={u.name} value={u.id} />)}
+                                    </Picker>
+                                </View>
+
+                                <Text style={modalStyles.pickerLabel}>Product Deal</Text>
+                                <View style={styles.pickerContainer}>
+                                    <Picker selectedValue={selectedDeal} onValueChange={itemValue => setSelectedDeal(itemValue)} enabled={!!selectedCompany}>
+                                        <Picker.Item label={selectedCompany ? "Select a deal..." : "Please select a company first"} value={null} />
+                                        {availableDeals.map(d => <Picker.Item key={d.id} label={`${d.product.generic_name} (${d.product.brand_name})`} value={d.id} />)}
+                                    </Picker>
+                                </View>
+
+                                <Text style={modalStyles.pickerLabel}>Purchase Order #</Text>
+                                <TextInput style={styles.textInput} placeholder="Enter P.O. Number" value={poNumber} onChangeText={setPoNumber} />
+
+                                <Text style={modalStyles.pickerLabel}>Quantity</Text>
+                                <TextInput style={styles.textInput} placeholder="Enter quantity" value={quantity} onChangeText={setQuantity} keyboardType="number-pad" />
+
+                                <Text style={modalStyles.pickerLabel}>Date Ordered</Text>
+                                <TextInput style={styles.textInput} value={dateOrdered} onChangeText={setDateOrdered} placeholder="YYYY-MM-DD" />
+                            </View>
+                        )}
+                    </ScrollView>
+                    <TouchableOpacity style={[styles.button, { marginTop: 16, backgroundColor: COLORS.success }, loading && styles.disabledButton]} disabled={loading} onPress={handleSubmit}>
+                        <Text style={styles.buttonText}>Submit Order</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
     );
 };
 
@@ -479,7 +605,7 @@ const ViewPackedBatchesModal = ({ visible, onClose, order }) => {
                         <Text style={modalStyles.headerTitle}>Packed Batches</Text>
                         <TouchableOpacity onPress={onClose}><MaterialCommunityIcons name="close-circle" size={30} color={COLORS.textLight} /></TouchableOpacity>
                     </View>
-                       <FlatList
+                        <FlatList
                             data={order.packed_batches || []}
                             keyExtractor={(item, index) => item.batch_number + index}
                             renderItem={({ item }) => (
@@ -492,151 +618,14 @@ const ViewPackedBatchesModal = ({ visible, onClose, order }) => {
                                 </View>
                             )}
                             ListEmptyComponent={<View style={styles.emptyState}><Text>No batch information found for this order.</Text></View>}
-                       />
+                        />
                 </View>
             </View>
         </Modal>
     );
 };
 
-// =================================================================
-// STANDALONE SCANNER COMPONENT (NAMED EXPORT)
-// =================================================================
-export const ScannerScreen = () => {
-    const navigation = useNavigation();
-    const [permission, requestPermission] = useCameraPermissions();
-    const [step, setStep] = useState('scan');
-    const [scannedData, setScannedData] = useState(null);
-    const [signature, setSignature] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const sigRef = useRef();
 
-    useEffect(() => {
-        if (!permission?.granted) {
-            requestPermission();
-        }
-    }, [permission]);
-
-    const handleScanSuccess = () => {
-        Alert.alert("Success", "Delivery confirmed successfully.", [
-            { text: "OK", onPress: () => navigation.goBack() }
-        ]);
-    };
-    
-    const onCancel = () => {
-        navigation.goBack();
-    };
-
-    if (!permission) return <View style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>;
-    if (!permission.granted) {
-        return (
-            <SafeAreaView style={[styles.scannerContainer, styles.center]}>
-                <MaterialCommunityIcons name="camera-off" size={48} color={COLORS.textLighter} style={{ marginBottom: 20 }} />
-                <Text style={styles.permissionText}>Camera permission is required.</Text>
-                <TouchableOpacity style={[styles.button, { marginTop: 20 }]} onPress={requestPermission}>
-                    <Text style={styles.buttonText}>Grant Permission</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.button, styles.clearButton, { marginTop: 10, width: '80%' }]} onPress={onCancel}>
-                    <Text style={styles.clearButtonText}>Cancel</Text>
-                </TouchableOpacity>
-            </SafeAreaView>
-        );
-    }
-
-    const handleBarCodeScanned = ({ data }) => {
-        if (isLoading || step === 'sign') return;
-        try {
-            const parsedData = JSON.parse(data);
-            if (!parsedData.order_id || !parsedData.product_name || !parsedData.location) {
-                throw new Error("QR code is missing required information.");
-            }
-            setScannedData(parsedData);
-            setStep('sign');
-            Alert.alert('QR Code Scanned', `Product: ${parsedData.product_name}\nQuantity: ${parsedData.quantity}`, [{ text: 'OK' }]);
-        } catch (error) {
-            Alert.alert('Invalid QR Code', "The scanned QR code is not in a valid format.", [{ text: 'Try Again', onPress: () => setStep('scan') }]);
-        }
-    };
-
-    const handleSignatureOK = (sig) => setSignature(sig);
-    const handleSignatureEnd = () => sigRef.current?.readSignature();
-    const handleClearSignature = () => {
-        sigRef.current?.clearSignature();
-        setSignature(null);
-    };
-
-    const handleSubmit = async () => {
-        if (!signature || !scannedData) {
-            Alert.alert('Missing Information', 'Please provide a signature and scan a QR code.');
-            return;
-        }
-        setIsLoading(true);
-        const payload = {
-            order_id: scannedData.order_id,
-            signature: signature // The base64 string
-        };
-
-        try {
-            await api.post('/mobile/staff/process-scan', payload);
-            handleScanSuccess();
-        } catch (error) {
-            Alert.alert('Submission Error', error.response?.data?.message || 'Failed to process the scan.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const content = (
-        <>
-            {step === 'scan' ? (
-                <CameraView onBarcodeScanned={scannedData ? undefined : handleBarCodeScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} style={StyleSheet.absoluteFillObject}>
-                    <View style={styles.scannerOverlay}>
-                        <View style={styles.scannerFrame} />
-                        <Text style={styles.scanPrompt}>Align QR code within the frame</Text>
-                    </View>
-                </CameraView>
-            ) : (
-                <View style={styles.signatureContainer}>
-                    <View style={styles.signatureHeader}>
-                        <Text style={styles.signatureTitle}>Customer Signature</Text>
-                        <Text style={styles.signatureSubtitle}>Please sign below to confirm receipt</Text>
-                    </View>
-                    <View style={styles.signatureBox}>
-                        <SignatureScreen ref={sigRef} onEnd={handleSignatureEnd} onOK={handleSignatureOK} webStyle={`.m-signature-pad--footer {display: none;}`} backgroundColor={COLORS.background} penColor={COLORS.textDark} />
-                    </View>
-                    <View style={styles.buttonRow}>
-                        <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClearSignature} disabled={isLoading}>
-                            <MaterialCommunityIcons name="eraser" size={18} color={COLORS.danger} />
-                            <Text style={styles.clearButtonText}>Clear</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.button, styles.submitButton, (!signature || isLoading) && styles.disabledButton]} onPress={handleSubmit} disabled={!signature || isLoading}>
-                            {isLoading ? <ActivityIndicator color={COLORS.white} /> : (
-                                <>
-                                    <MaterialCommunityIcons name="check-circle" size={18} color={COLORS.white} />
-                                    <Text style={styles.buttonText}>Submit</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            )}
-        </>
-    );
-
-    return (
-        <SafeAreaView style={styles.scannerContainer}>
-            <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
-                <MaterialCommunityIcons name="close" size={30} color={COLORS.textDark} />
-            </TouchableOpacity>
-            {content}
-        </SafeAreaView>
-    );
-};
-
-
-// =================================================================
-// MAIN ORDERS SCREEN COMPONENT (DEFAULT EXPORT)
-// =================================================================
 export default function OrdersScreen() {
     const isFocused = useIsFocused();
     const navigation = useNavigation();
@@ -653,6 +642,7 @@ export default function OrdersScreen() {
     const [isInsufficientProductsModalVisible, setInsufficientProductsModalVisible] = useState(false);
     const [isChooseBatchModalVisible, setChooseBatchModalVisible] = useState(false);
     const [isViewPackedBatchesModalVisible, setViewPackedBatchesModalVisible] = useState(false);
+    const [isCreateModalVisible, setCreateModalVisible] = useState(false);
 
     const [selectedGroupData, setSelectedGroupData] = useState(null);
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -678,8 +668,15 @@ export default function OrdersScreen() {
         }
     }, [isFocused]);
 
-    const handleRefresh = () => { setRefreshing(true); fetchOrders(); };
-    const handleOpenViewModal = (orderData) => { setSelectedGroupData(orderData); setViewModalVisible(true); };
+    const handleRefresh = () => {
+        setRefreshing(true);
+        fetchOrders();
+    };
+    
+    const handleOpenViewModal = (orderData) => {
+        setSelectedGroupData(orderData);
+        setViewModalVisible(true);
+    };
 
     const handleUpdateStatusRequest = (order) => {
         setSelectedOrder(order);
@@ -699,12 +696,25 @@ export default function OrdersScreen() {
         setInsufficientProductsModalVisible(false);
         setChooseBatchModalVisible(false);
         setViewPackedBatchesModalVisible(false);
+        setCreateModalVisible(false);
         setSelectedGroupData(null);
         setSelectedOrder(null);
     };
 
-    const showInsufficientOrdersModal = (data) => { setModalData(data || []); setInsufficientOrdersModalVisible(true); };
-    const showInsufficientProductsModal = (data) => { setModalData(data || []); setInsufficientProductsModalVisible(true); };
+    const showInsufficientOrdersModal = (data) => {
+        setModalData(data || []);
+        setInsufficientOrdersModalVisible(true);
+    };
+
+    const showInsufficientProductsModal = (data) => {
+        setModalData(data || []);
+        setInsufficientProductsModalVisible(true);
+    };
+
+    const handleOrderCreated = () => {
+        handleCloseModals();
+        fetchOrders();
+    };
 
     const handleStatusSubmit = async (status, extraData = {}) => {
         if (!selectedOrder) return;
@@ -746,11 +756,16 @@ export default function OrdersScreen() {
         { title: 'Orders This Week', count: data.summary.ordersThisWeek, icon: 'chart-line', color: COLORS.primary },
         { title: 'Pending Orders', count: data.summary.pendingOrders, icon: 'clock-outline', color: COLORS.warning },
         { title: 'Cannot Fulfill', count: data.summary.insufficientOrders, icon: 'alert-circle-outline', color: COLORS.danger, isAlert: true, onPress: () => showInsufficientOrdersModal(data.summary.insufficientOrderLines) },
-        { title: 'Insufficient Products', count: data.summary.insufficientProducts, icon: 'package-variant-closed-minus', color: COLORS.danger, isAlert: true, onPress: () => showInsufficientProductsModal(data.summary.insufficientSummary) },
+        { title: 'Insufficient Products', count: data.summary.insufficientProducts, icon: 'package-variant-closed-remove', color: COLORS.danger, isAlert: true, onPress: () => showInsufficientProductsModal(data.summary.insufficientSummary) },
     ] : [];
 
     return (
         <SafeAreaView style={styles.container}>
+            <CreateOrderModal
+                visible={isCreateModalVisible}
+                onClose={handleCloseModals}
+                onOrderCreated={handleOrderCreated}
+            />
             <ViewDetailsModal
                 visible={isViewModalVisible}
                 onClose={handleCloseModals}
@@ -842,6 +857,11 @@ export default function OrdersScreen() {
                         </View>
 
                         <View style={styles.actionBar}>
+                            <TouchableOpacity style={[styles.button, { marginBottom: 16 }]} onPress={() => setCreateModalVisible(true)}>
+                                <MaterialCommunityIcons name="plus-circle-outline" size={20} color={COLORS.white} />
+                                <Text style={styles.buttonText}>Create Manual Order</Text>
+                            </TouchableOpacity>
+
                             <TouchableOpacity style={[styles.button, styles.scanButton]} onPress={() => navigation.navigate('ScannerScreen')}>
                                 <MaterialCommunityIcons name="qrcode-scan" size={20} color={COLORS.white} />
                                 <Text style={styles.buttonText}>Scan QR to Deliver</Text>
@@ -888,9 +908,138 @@ export default function OrdersScreen() {
     );
 }
 
-// =================================================================
-// STYLESHEETS
-// =================================================================
+export const ScannerScreen = () => {
+    const navigation = useNavigation();
+    const [permission, requestPermission] = useCameraPermissions();
+    const [step, setStep] = useState('scan');
+    const [scannedData, setScannedData] = useState(null);
+    const [signature, setSignature] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const sigRef = useRef();
+
+    useEffect(() => {
+        if (!permission?.granted) {
+            requestPermission();
+        }
+    }, [permission]);
+
+    const handleScanSuccess = () => {
+        Alert.alert("Success", "Delivery confirmed successfully.", [
+            { text: "OK", onPress: () => navigation.goBack() }
+        ]);
+    };
+    
+    const onCancel = () => {
+        navigation.goBack();
+    };
+
+    if (!permission) return <View style={styles.center}><ActivityIndicator color={COLORS.primary} /></View>;
+    if (!permission.granted) {
+        return (
+            <SafeAreaView style={[styles.scannerContainer, styles.center]}>
+                <MaterialCommunityIcons name="camera-off" size={48} color={COLORS.textLighter} style={{ marginBottom: 20 }} />
+                <Text style={styles.permissionText}>Camera permission is required.</Text>
+                <TouchableOpacity style={[styles.button, { marginTop: 20 }]} onPress={requestPermission}>
+                    <Text style={styles.buttonText}>Grant Permission</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.button, styles.clearButton, { marginTop: 10, width: '80%' }]} onPress={onCancel}>
+                    <Text style={styles.clearButtonText}>Cancel</Text>
+                </TouchableOpacity>
+            </SafeAreaView>
+        );
+    }
+
+    const handleBarCodeScanned = ({ data }) => {
+        if (isLoading || step === 'sign') return;
+        try {
+            const parsedData = JSON.parse(data);
+            if (!parsedData.order_id || !parsedData.product_name || !parsedData.location) {
+                throw new Error("QR code is missing required information.");
+            }
+            setScannedData(parsedData);
+            setStep('sign');
+            Alert.alert('QR Code Scanned', `Product: ${parsedData.product_name}\nQuantity: ${parsedData.quantity}`, [{ text: 'OK' }]);
+        } catch (error) {
+            Alert.alert('Invalid QR Code', "The scanned QR code is not in a valid format.", [{ text: 'Try Again', onPress: () => setStep('scan') }]);
+        }
+    };
+
+    const handleSignatureOK = (sig) => setSignature(sig);
+    const handleSignatureEnd = () => sigRef.current?.readSignature();
+    const handleClearSignature = () => {
+        sigRef.current?.clearSignature();
+        setSignature(null);
+    };
+
+    const handleSubmit = async () => {
+        if (!signature || !scannedData) {
+            Alert.alert('Missing Information', 'Please provide a signature and scan a QR code.');
+            return;
+        }
+        setIsLoading(true);
+        const payload = {
+            order_id: scannedData.order_id,
+            signature: signature
+        };
+
+        try {
+            await api.post('/mobile/staff/process-scan', payload);
+            handleScanSuccess();
+        } catch (error) {
+            Alert.alert('Submission Error', error.response?.data?.message || 'Failed to process the scan.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const content = (
+        <>
+            {step === 'scan' ? (
+                <CameraView onBarcodeScanned={scannedData ? undefined : handleBarCodeScanned} barcodeScannerSettings={{ barcodeTypes: ["qr"] }} style={StyleSheet.absoluteFillObject}>
+                    <View style={styles.scannerOverlay}>
+                        <View style={styles.scannerFrame} />
+                        <Text style={styles.scanPrompt}>Align QR code within the frame</Text>
+                    </View>
+                </CameraView>
+            ) : (
+                <View style={styles.signatureContainer}>
+                    <View style={styles.signatureHeader}>
+                        <Text style={styles.signatureTitle}>Customer Signature</Text>
+                        <Text style={styles.signatureSubtitle}>Please sign below to confirm receipt</Text>
+                    </View>
+                    <View style={styles.signatureBox}>
+                        <SignatureScreen ref={sigRef} onEnd={handleSignatureEnd} onOK={handleSignatureOK} webStyle={`.m-signature-pad--footer {display: none;}`} backgroundColor={COLORS.background} penColor={COLORS.textDark} />
+                    </View>
+                    <View style={styles.buttonRow}>
+                        <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClearSignature} disabled={isLoading}>
+                            <MaterialCommunityIcons name="eraser" size={18} color={COLORS.danger} />
+                            <Text style={styles.clearButtonText}>Clear</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.button, styles.submitButton, (!signature || isLoading) && styles.disabledButton]} onPress={handleSubmit} disabled={!signature || isLoading}>
+                            {isLoading ? <ActivityIndicator color={COLORS.white} /> : (
+                                <>
+                                    <MaterialCommunityIcons name="check-circle" size={18} color={COLORS.white} />
+                                    <Text style={styles.buttonText}>Submit</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
+        </>
+    );
+
+    return (
+        <SafeAreaView style={styles.scannerContainer}>
+            <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
+                <MaterialCommunityIcons name="close" size={30} color={COLORS.textDark} />
+            </TouchableOpacity>
+            {content}
+        </SafeAreaView>
+    );
+};
+
+
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     scrollContainer: { padding: 16, paddingBottom: 20 },
@@ -948,47 +1097,244 @@ const styles = StyleSheet.create({
     signatureBox: { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, marginBottom: 20 },
     buttonRow: { flexDirection: 'row', justifyContent: 'space-between' },
     closeButton: { position: 'absolute', top: 50, right: 20, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 15, padding: 2 },
+    textInput: {
+        backgroundColor: COLORS.background,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        fontSize: 16,
+        color: COLORS.textDark,
+        marginTop: 4,
+    },
 });
 
 const modalStyles = StyleSheet.create({
-    overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 10 },
-    modalContainer: { width: '100%', backgroundColor: COLORS.white, borderRadius: 12, padding: 20, maxHeight: '90%' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, flex: 1, marginRight: 8 },
-    headerSubtitle: { fontSize: 14, color: COLORS.textLight, marginTop: 4 },
-    contentScrollView: { marginVertical: 12 },
-    table: { borderRadius: 6, marginBottom: 16 },
-    tableRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, alignItems: 'center', },
-    tableCellHeader: { fontSize: 11, color: COLORS.textDark, fontWeight: 'bold' },
-    tableCellSub: { fontSize: 10, color: COLORS.textLight },
-    tableCell: { fontSize: 12, color: COLORS.textMedium, flex: 1, textAlign: 'center', paddingHorizontal: 2 },
-    actionsCell: { flex: 2, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8 },
-    iconButton: { padding: 4 },
-    changeStatusBtn: { backgroundColor: COLORS.primaryLight, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 15 },
-    changeStatusBtnText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 11 },
-    footer: { paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.borderLight, alignItems: 'flex-end' },
-    grandTotalLabel: { fontSize: 14, color: COLORS.textLight },
-    grandTotal: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, marginTop: 4 },
-    statusButtonContainer: { paddingVertical: 8 },
-    statusButton: { borderRadius: 8, paddingVertical: 14, marginBottom: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
-    statusButtonText: { color: COLORS.white, fontSize: 16, fontWeight: 'bold' },
-    productInfoContainer: { backgroundColor: COLORS.background, borderRadius: 8, padding: 16, marginVertical: 12 },
-    productNameTitle: { fontSize: 16, fontWeight: '600', textAlign: 'center', color: COLORS.textDark },
-    insufficientStockRow: { backgroundColor: COLORS.dangerLight },
-    insufficientStockText: { color: COLORS.danger, fontSize: 11, fontWeight: 'bold' },
-    pickerLabel: { fontSize: 16, color: COLORS.textMedium, marginBottom: 8, marginTop: 16, },
-    insufficientItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
-    insufficientProductName: { fontSize: 16, fontWeight: '600', color: COLORS.textDark, marginBottom: 4 },
-    insufficientDetails: { flexDirection: 'row', justifyContent: 'space-between' },
-    insufficientDetail: { fontSize: 14, color: COLORS.textMedium },
-    summaryTableHeader: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, borderBottomWidth: 1.5, borderBottomColor: COLORS.border, backgroundColor: COLORS.white, },
-    summaryTableHeaderCell: { fontSize: 11, color: COLORS.textLight, fontWeight: 'bold', textTransform: 'uppercase', },
-    summaryTableRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, alignItems: 'center', },
-    summaryTableCell: { fontSize: 13, color: COLORS.textMedium, fontWeight: '500', },
-    summaryTableCellSub: { fontSize: 11, color: COLORS.textLighter, marginTop: 2, },
-    quantityTracker: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, backgroundColor: COLORS.background, borderRadius: 6, marginVertical: 12 },
-    batchRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
-    batchInfo: { marginLeft: 12, flex: 1 },
-    batchNumber: { fontSize: 15, fontWeight: '500', color: COLORS.textDark },
-    batchExpiry: { fontSize: 13, color: COLORS.textLight, marginTop: 2 },
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 10
+    },
+    modalContainer: {
+        width: '100%',
+        backgroundColor: COLORS.white,
+        borderRadius: 12,
+        padding: 20,
+        maxHeight: '90%'
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.borderLight
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: COLORS.textDark,
+        flex: 1,
+        marginRight: 8
+    },
+    headerSubtitle: {
+        fontSize: 14,
+        color: COLORS.textLight,
+        marginTop: 4
+    },
+    contentScrollView: {
+        marginVertical: 12
+    },
+    table: {
+        borderRadius: 6,
+        marginBottom: 16
+    },
+    tableRow: {
+        flexDirection: 'row',
+        paddingVertical: 12,
+        paddingHorizontal: 4,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.borderLight,
+        alignItems: 'center',
+    },
+    tableCellHeader: {
+        fontSize: 11,
+        color: COLORS.textDark,
+        fontWeight: 'bold'
+    },
+    tableCellSub: {
+        fontSize: 10,
+        color: COLORS.textLight
+    },
+    tableCell: {
+        fontSize: 12,
+        color: COLORS.textMedium,
+        flex: 1,
+        textAlign: 'center',
+        paddingHorizontal: 2
+    },
+    actionsCell: {
+        flex: 2,
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        gap: 8
+    },
+    iconButton: {
+        padding: 4
+    },
+    changeStatusBtn: {
+        backgroundColor: COLORS.primaryLight,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 15
+    },
+    changeStatusBtnText: {
+        color: COLORS.primary,
+        fontWeight: 'bold',
+        fontSize: 11
+    },
+    footer: {
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.borderLight,
+        alignItems: 'flex-end'
+    },
+    grandTotalLabel: {
+        fontSize: 14,
+        color: COLORS.textLight
+    },
+    grandTotal: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: COLORS.textDark,
+        marginTop: 4
+    },
+    statusButtonContainer: {
+        paddingVertical: 8
+    },
+    statusButton: {
+        borderRadius: 8,
+        paddingVertical: 14,
+        marginBottom: 10,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 8
+    },
+    statusButtonText: {
+        color: COLORS.white,
+        fontSize: 16,
+        fontWeight: 'bold'
+    },
+    productInfoContainer: {
+        backgroundColor: COLORS.background,
+        borderRadius: 8,
+        padding: 16,
+        marginVertical: 12
+    },
+    productNameTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        textAlign: 'center',
+        color: COLORS.textDark
+    },
+    insufficientStockRow: {
+        backgroundColor: COLORS.dangerLight
+    },
+    insufficientStockText: {
+        color: COLORS.danger,
+        fontSize: 11,
+        fontWeight: 'bold'
+    },
+    pickerLabel: {
+        fontSize: 16,
+        color: COLORS.textMedium,
+        marginBottom: 4,
+        marginTop: 14,
+        fontWeight: '500'
+    },
+    insufficientItem: {
+        padding: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.borderLight
+    },
+    insufficientProductName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.textDark,
+        marginBottom: 4
+    },
+    insufficientDetails: {
+        flexDirection: 'row',
+        justifyContent: 'space-between'
+    },
+    insufficientDetail: {
+        fontSize: 14,
+        color: COLORS.textMedium
+    },
+    summaryTableHeader: {
+        flexDirection: 'row',
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        borderBottomWidth: 1.5,
+        borderBottomColor: COLORS.border,
+        backgroundColor: COLORS.white,
+    },
+    summaryTableHeaderCell: {
+        fontSize: 11,
+        color: COLORS.textLight,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+    },
+    summaryTableRow: {
+        flexDirection: 'row',
+        paddingVertical: 12,
+        paddingHorizontal: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.borderLight,
+        alignItems: 'center',
+    },
+    summaryTableCell: {
+        fontSize: 13,
+        color: COLORS.textMedium,
+        fontWeight: '500',
+    },
+    summaryTableCellSub: {
+        fontSize: 11,
+        color: COLORS.textLighter,
+        marginTop: 2,
+    },
+    quantityTracker: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        padding: 12,
+        backgroundColor: COLORS.background,
+        borderRadius: 6,
+        marginVertical: 12
+    },
+    batchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.borderLight
+    },
+    batchInfo: {
+        marginLeft: 12,
+        flex: 1
+    },
+    batchNumber: {
+        fontSize: 15,
+        fontWeight: '500',
+        color: COLORS.textDark
+    },
+    batchExpiry: {
+        fontSize: 13,
+        color: COLORS.textLight,
+        marginTop: 2
+    },
 });
+
